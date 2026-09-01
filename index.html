@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TOEIC頻出英単語を4択クイズで学べるWebアプリ">
+  <title>TOEIC Word Quiz</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <!-- アプリ名と短い説明 -->
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">TQ</div>
+      <div><p class="eyebrow">5 MINUTE STUDY</p><h1>TOEIC Word Quiz</h1><p class="subtitle">頻出英単語を、4択でテンポよく覚えよう。</p></div>
+    </header>
+
+    <div id="quiz-view">
+      <!-- クイズ全体を囲むカード -->
+      <section class="quiz-card" aria-labelledby="word">
+      <!-- 出題方向を選んだあとに出題数を選びます -->
+      <div id="start-area" class="start-area">
+        <p id="start-mode-label" class="question-label">NORMAL QUIZ</p>
+        <div id="direction-selection">
+          <h2>出題モードを選ぶ</h2>
+          <p id="start-description" class="start-description">問題と答えの方向を選択してください。</p>
+          <div class="direction-options">
+            <button class="direction-button" type="button" data-direction="english-to-japanese"><strong>English</strong><span>英語 → 日本語</span></button>
+            <button class="direction-button" type="button" data-direction="japanese-to-english"><strong>日本語</strong><span>日本語 → 英語</span></button>
+          </div>
+        </div>
+        <div id="count-selection" hidden>
+          <h2>出題数を選ぶ</h2>
+          <p id="selected-direction-label" class="selected-direction-label"></p>
+          <div class="count-options">
+          <button class="count-button" type="button" data-count="10"><strong>10</strong><span>問</span></button>
+          <button class="count-button" type="button" data-count="20"><strong>20</strong><span>問</span></button>
+          </div>
+          <button id="change-direction-button" class="inline-back-button" type="button">← 出題モードを選び直す</button>
+        </div>
+      </div>
+
+      <div id="quiz-status" hidden>
+      <div class="status-row">
+        <p class="question-count"><span id="current-number">1</span> / <span id="total-number">30</span></p>
+        <p class="score">正解 <strong id="score">0</strong> 問</p>
+      </div>
+      <div class="progress-track" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
+      </div>
+
+      <div id="quiz-area" hidden>
+        <p id="mode-label" class="question-label">この単語の意味は？</p>
+        <h2 id="word">candidate</h2>
+        <div id="choices" class="choices" role="group" aria-label="日本語の選択肢"></div>
+        <p id="feedback" class="feedback" aria-live="polite"></p>
+        <button id="next-button" class="next-button" type="button" hidden>次の問題 →</button>
+      </div>
+
+      <!-- クイズ終了時の結果画面 -->
+      <div id="result-area" class="result-area" hidden>
+        <div class="result-icon" aria-hidden="true">✓</div>
+        <p id="result-label" class="question-label">QUIZ COMPLETE</p>
+        <h2>おつかれさまでした！</h2>
+        <p id="result-direction" class="result-direction">英語 → 日本語</p>
+        <p class="final-score"><strong id="final-score">0</strong><span id="final-total"> / 10 問正解</span></p>
+        <div class="result-summary">
+          <p><span>正解</span><strong id="correct-count">0</strong></p>
+          <p><span>不正解</span><strong id="incorrect-count">0</strong></p>
+          <p><span>正答率</span><strong id="accuracy-rate">0%</strong></p>
+        </div>
+        <p id="result-message" class="result-message"></p>
+        <div class="result-actions">
+          <button id="retry-button" class="next-button" type="button">もう一度挑戦</button>
+          <button id="back-to-selection-button" class="selection-back-button" type="button">モード選択に戻る</button>
+        </div>
+      </div>
+      </section>
+
+      <!-- 復習画面と単語管理画面を開くボタン -->
+      <div class="utility-actions">
+        <button id="normal-button" class="manage-button" type="button">通常クイズ</button>
+        <button id="weak-button" class="manage-button" type="button">苦手単語</button>
+        <button id="review-button" class="review-button" type="button">間違えた単語を復習 <span id="review-count" class="review-count">0</span></button>
+        <button id="manage-button" class="manage-button" type="button">単語を管理</button>
+        <button id="records-button" class="manage-button" type="button">学習記録を見る</button>
+      </div>
+      <p id="review-message" class="review-message" aria-live="polite"></p>
+      <p class="hint">選択肢はクリック、または <kbd>1</kbd>〜<kbd>4</kbd> キーでも回答できます</p>
+    </div>
+
+    <!-- 単語の追加と削除を行う管理画面 -->
+    <section id="management-view" class="management-card" aria-labelledby="management-title" hidden>
+      <div class="management-header">
+        <div>
+          <p class="eyebrow">VOCABULARY</p>
+          <h2 id="management-title">単語を管理</h2>
+          <p>登録中の単語：<strong id="word-count">0</strong>語</p>
+        </div>
+        <button id="back-button" class="back-button" type="button">← クイズへ戻る</button>
+      </div>
+
+      <form id="word-form" class="word-form" novalidate>
+        <div class="form-field">
+          <label for="english-input">英単語</label>
+          <input id="english-input" name="english" type="text" autocomplete="off" placeholder="例：appointment">
+        </div>
+        <div class="form-field">
+          <label for="japanese-input">日本語訳</label>
+          <input id="japanese-input" name="japanese" type="text" autocomplete="off" placeholder="例：予約">
+        </div>
+        <div class="form-actions">
+          <button id="submit-word-button" class="add-button" type="submit">単語を追加</button>
+          <button id="cancel-edit-button" class="cancel-edit-button" type="button" hidden>編集をやめる</button>
+        </div>
+      </form>
+      <p id="form-message" class="form-message" aria-live="polite"></p>
+
+      <!-- 3種類の保存データを1つのJSONファイルでバックアップします -->
+      <div class="backup-panel">
+        <div><strong>データのバックアップ</strong><p>単語・復習リスト・学習記録をまとめて保存、復元できます。</p></div>
+        <div class="backup-actions">
+          <button id="export-button" class="backup-button" type="button">JSONを書き出す</button>
+          <label class="backup-button import-label" for="import-input">JSONを読み込む</label>
+          <input id="import-input" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>
+      <p id="backup-message" class="form-message" aria-live="polite"></p>
+
+      <!-- 英単語と日本語訳のどちらからでも検索できます -->
+      <div class="search-field">
+        <label for="search-input">単語を検索</label>
+        <input id="search-input" type="search" autocomplete="off" placeholder="英単語または日本語訳を入力">
+      </div>
+
+      <!-- 単語一覧はJavaScriptでここに追加します -->
+      <ul id="word-list" class="word-list" aria-label="登録されている単語"></ul>
+    </section>
+
+    <!-- 単語ごとの学習結果を確認する画面 -->
+    <section id="records-view" class="management-card records-card" aria-labelledby="records-title" hidden>
+      <div class="management-header">
+        <div><p class="eyebrow">LEARNING RECORDS</p><h2 id="records-title">学習記録</h2><p>英日・日英と復習モードの結果を合算しています。</p></div>
+        <button id="records-back-button" class="back-button" type="button">← クイズへ戻る</button>
+      </div>
+      <div class="records-toolbar">
+        <div class="sort-options" role="group" aria-label="並べ替え">
+          <button class="sort-button active" type="button" data-sort="weak">苦手順</button>
+          <button class="sort-button" type="button" data-sort="az">A〜Z順</button>
+          <button class="sort-button" type="button" data-sort="high">正答率が高い順</button>
+        </div>
+        <button id="reset-all-records-button" class="reset-all-button" type="button">全記録をリセット</button>
+      </div>
+      <p id="records-message" class="form-message" aria-live="polite"></p>
+      <div class="records-table-wrap">
+        <table class="records-table">
+          <thead><tr><th>英単語</th><th>日本語訳</th><th>正解</th><th>不正解</th><th>回答回数</th><th>正答率</th><th>操作</th></tr></thead>
+          <tbody id="records-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
