@@ -36,6 +36,14 @@
           <button class="count-button" type="button" data-count="10"><strong>10</strong><span>問</span></button>
           <button class="count-button" type="button" data-count="20"><strong>20</strong><span>問</span></button>
           </div>
+          <fieldset class="time-limit-fieldset">
+            <legend>1問あたりの制限時間</legend>
+            <div class="time-limit-options">
+              <button class="time-limit-button active" type="button" data-seconds="0" aria-pressed="true">時間制限なし</button>
+              <button class="time-limit-button" type="button" data-seconds="5" aria-pressed="false">5秒</button>
+              <button class="time-limit-button" type="button" data-seconds="10" aria-pressed="false">10秒</button>
+            </div>
+          </fieldset>
           <button id="change-direction-button" class="inline-back-button" type="button">← 出題モードを選び直す</button>
         </div>
       </div>
@@ -50,10 +58,22 @@
 
       <div id="quiz-area" hidden>
         <p id="mode-label" class="question-label">この単語の意味は？</p>
+        <div id="timer-area" class="timer-area" role="timer" hidden>
+          <div class="timer-label"><span>残り時間</span><strong id="timer-seconds">10秒</strong></div>
+          <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
+        </div>
         <h2 id="word">candidate</h2>
         <div id="choices" class="choices" role="group" aria-label="日本語の選択肢"></div>
         <p id="feedback" class="feedback" aria-live="polite"></p>
-        <button id="next-button" class="next-button" type="button" hidden>次の問題 →</button>
+        <!-- ボタンを隠している間も、この領域の高さは残して位置を安定させます -->
+        <div class="next-action-area">
+          <button id="next-button" class="next-button" type="button" disabled hidden>次の問題 →</button>
+        </div>
+        <!-- 回答後、4つの選択肢の英単語と日本語訳をここに表示します -->
+        <section id="explanation-area" class="explanation-area" aria-labelledby="explanation-title" hidden>
+          <h3 id="explanation-title">選択肢の解説</h3>
+          <div id="explanation-list" class="explanation-list"></div>
+        </section>
       </div>
 
       <!-- クイズ終了時の結果画面 -->
@@ -62,11 +82,13 @@
         <p id="result-label" class="question-label">QUIZ COMPLETE</p>
         <h2>おつかれさまでした！</h2>
         <p id="result-direction" class="result-direction">英語 → 日本語</p>
+        <p id="result-time-setting" class="result-time-setting" hidden></p>
         <p class="final-score"><strong id="final-score">0</strong><span id="final-total"> / 10 問正解</span></p>
         <div class="result-summary">
           <p><span>正解</span><strong id="correct-count">0</strong></p>
           <p><span>不正解</span><strong id="incorrect-count">0</strong></p>
           <p><span>正答率</span><strong id="accuracy-rate">0%</strong></p>
+          <p id="timeout-summary" hidden><span>時間切れ</span><strong id="timeout-count">0</strong></p>
         </div>
         <p id="result-message" class="result-message"></p>
         <div class="result-actions">
@@ -115,6 +137,21 @@
       </form>
       <p id="form-message" class="form-message" aria-live="polite"></p>
 
+      <!-- 複数の英単語を順番に自動翻訳して、確認後にまとめて登録します -->
+      <section class="bulk-panel" aria-labelledby="bulk-title">
+        <h3 id="bulk-title">英単語を一括登録</h3>
+        <p>英単語や英語表現を1行に1件ずつ入力してください。</p>
+        <textarea id="bulk-input" rows="6" placeholder="passing through&#10;window pane&#10;appointment"></textarea>
+        <button id="translate-button" class="add-button" type="button">自動翻訳して確認</button>
+        <div id="translation-progress" class="translation-progress" aria-live="polite"></div>
+        <div id="translation-review" hidden>
+          <div class="bulk-table-wrap">
+            <table class="bulk-table"><thead><tr><th>登録</th><th>英単語・表現</th><th>日本語訳（編集可）</th><th>状態</th></tr></thead><tbody id="translation-body"></tbody></table>
+          </div>
+          <button id="register-translations-button" class="add-button bulk-register-button" type="button">確認した単語を登録</button>
+        </div>
+      </section>
+
       <!-- 3種類の保存データを1つのJSONファイルでバックアップします -->
       <div class="backup-panel">
         <div><strong>データのバックアップ</strong><p>単語・復習リスト・学習記録をまとめて保存、復元できます。</p></div>
@@ -159,6 +196,7 @@
       </div>
     </section>
   </main>
+  <script src="choice-pool.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
