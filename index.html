@@ -18,16 +18,26 @@
     <div id="quiz-view">
       <!-- クイズ全体を囲むカード -->
       <section class="quiz-card" aria-labelledby="word">
-      <!-- 出題方向を選んだあとに出題数を選びます -->
+      <!-- 目標スコア、出題方向、出題数と制限時間の順に選びます -->
       <div id="start-area" class="start-area">
         <p id="start-mode-label" class="question-label">NORMAL QUIZ</p>
-        <div id="direction-selection">
+        <p id="start-description" class="start-description">出題する目標スコアを選択してください。</p>
+        <div id="group-selection">
+          <h2>目標スコアを選ぶ</h2>
+          <div class="group-options">
+            <button class="group-button group-500" type="button" data-group="500"><strong>500点</strong><span><b data-group-count="500">0</b>語</span></button>
+            <button class="group-button group-730" type="button" data-group="730"><strong>730点</strong><span><b data-group-count="730">0</b>語</span></button>
+            <button class="group-button group-990" type="button" data-group="990"><strong>990点</strong><span><b data-group-count="990">0</b>語</span></button>
+            <button class="group-button group-all active" type="button" data-group="all" aria-pressed="true"><strong>全単語</strong><span><b data-group-count="all">0</b>語をランダム</span></button>
+          </div>
+        </div>
+        <div id="direction-selection" hidden>
           <h2>出題モードを選ぶ</h2>
-          <p id="start-description" class="start-description">問題と答えの方向を選択してください。</p>
           <div class="direction-options">
             <button class="direction-button" type="button" data-direction="english-to-japanese"><strong>English</strong><span>英語 → 日本語</span></button>
             <button class="direction-button" type="button" data-direction="japanese-to-english"><strong>日本語</strong><span>日本語 → 英語</span></button>
           </div>
+          <button id="change-group-button" class="inline-back-button" type="button">← 目標スコアを選び直す</button>
         </div>
         <div id="count-selection" hidden>
           <h2>出題数を選ぶ</h2>
@@ -58,6 +68,7 @@
 
       <div id="quiz-area" hidden>
         <p id="mode-label" class="question-label">この単語の意味は？</p>
+        <p id="quiz-group-label" class="quiz-group-label">全単語ランダム</p>
         <div id="timer-area" class="timer-area" role="timer" hidden>
           <div class="timer-label"><span>残り時間</span><strong id="timer-seconds">10秒</strong></div>
           <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
@@ -82,6 +93,7 @@
         <p id="result-label" class="question-label">QUIZ COMPLETE</p>
         <h2>おつかれさまでした！</h2>
         <p id="result-direction" class="result-direction">英語 → 日本語</p>
+        <p id="result-group" class="result-group">全単語ランダム</p>
         <p id="result-time-setting" class="result-time-setting" hidden></p>
         <p class="final-score"><strong id="final-score">0</strong><span id="final-total"> / 10 問正解</span></p>
         <div class="result-summary">
@@ -93,7 +105,7 @@
         <p id="result-message" class="result-message"></p>
         <div class="result-actions">
           <button id="retry-button" class="next-button" type="button">もう一度挑戦</button>
-          <button id="back-to-selection-button" class="selection-back-button" type="button">モード選択に戻る</button>
+          <button id="back-to-selection-button" class="selection-back-button" type="button">選択画面に戻る</button>
         </div>
       </div>
       </section>
@@ -130,6 +142,14 @@
           <label for="japanese-input">日本語訳</label>
           <input id="japanese-input" name="japanese" type="text" autocomplete="off" placeholder="例：予約">
         </div>
+        <div class="form-field">
+          <label for="group-input">レベル</label>
+          <select id="group-input">
+            <option value="500" selected>500点レベル</option>
+            <option value="730">730点レベル</option>
+            <option value="990">990点レベル</option>
+          </select>
+        </div>
         <div class="form-actions">
           <button id="submit-word-button" class="add-button" type="submit">単語を追加</button>
           <button id="cancel-edit-button" class="cancel-edit-button" type="button" hidden>編集をやめる</button>
@@ -146,22 +166,22 @@
         <div id="translation-progress" class="translation-progress" aria-live="polite"></div>
         <div id="translation-review" hidden>
           <div class="bulk-table-wrap">
-            <table class="bulk-table"><thead><tr><th>登録</th><th>英単語・表現</th><th>日本語訳（編集可）</th><th>状態</th></tr></thead><tbody id="translation-body"></tbody></table>
+            <table class="bulk-table"><thead><tr><th>登録</th><th>英単語・表現</th><th>日本語訳（編集可）</th><th>レベル</th><th>状態</th></tr></thead><tbody id="translation-body"></tbody></table>
           </div>
-          <button id="register-translations-button" class="add-button bulk-register-button" type="button">確認した単語を登録</button>
+          <!-- 一括設定後も、表の各行で個別にレベルを変更できます -->
+          <div class="bulk-level-tools" role="group" aria-label="確認中の単語のレベルを一括設定">
+            <span>全行のレベル：</span>
+            <button class="bulk-level-button" type="button" data-bulk-level="500">すべて500点</button>
+            <button class="bulk-level-button" type="button" data-bulk-level="730">すべて730点</button>
+            <button class="bulk-level-button" type="button" data-bulk-level="990">すべて990点</button>
+          </div>
+          <p id="translation-selection-count" class="translation-selection-count" aria-live="polite">0件を登録します</p>
+          <div class="bulk-review-actions">
+            <button id="register-translations-button" class="add-button bulk-register-button" type="button">確認した単語を登録</button>
+            <button id="cancel-translation-button" class="cancel-edit-button" type="button">確認を取り消す</button>
+          </div>
         </div>
       </section>
-
-      <!-- 3種類の保存データを1つのJSONファイルでバックアップします -->
-      <div class="backup-panel">
-        <div><strong>データのバックアップ</strong><p>単語・復習リスト・学習記録をまとめて保存、復元できます。</p></div>
-        <div class="backup-actions">
-          <button id="export-button" class="backup-button" type="button">JSONを書き出す</button>
-          <label class="backup-button import-label" for="import-input">JSONを読み込む</label>
-          <input id="import-input" type="file" accept="application/json,.json" hidden>
-        </div>
-      </div>
-      <p id="backup-message" class="form-message" aria-live="polite"></p>
 
       <!-- 英単語と日本語訳のどちらからでも検索できます -->
       <div class="search-field">
@@ -169,8 +189,86 @@
         <input id="search-input" type="search" autocomplete="off" placeholder="英単語または日本語訳を入力">
       </div>
 
+      <div class="group-filter-field">
+        <label for="group-filter-select">レベルで絞り込む</label>
+        <select id="group-filter-select">
+          <option value="all" selected>すべて</option>
+          <option value="500">500点</option>
+          <option value="730">730点</option>
+          <option value="990">990点</option>
+        </select>
+      </div>
+
+      <!-- 選択中の並び順は、単語を追加・編集・削除しても維持されます -->
+      <div class="word-sort-field">
+        <label for="word-sort-select">単語一覧の並び順</label>
+        <select id="word-sort-select">
+          <option value="az" selected>英単語のA→Z順</option>
+          <option value="rate-low">正答率が低い順</option>
+          <option value="rate-high">正答率が高い順</option>
+          <option value="incorrect">不正解数が多い順</option>
+          <option value="answers">回答回数が多い順</option>
+        </select>
+      </div>
+
+      <!-- 検索結果だけの選択や、選択済み単語の一括操作を行います -->
+      <div class="word-bulk-actions" aria-label="単語の一括操作">
+        <label class="select-visible-control" for="select-visible-checkbox">
+          <input id="select-visible-checkbox" type="checkbox">
+          <span>表示中の単語をすべて選択</span>
+        </label>
+        <button id="clear-word-selection-button" class="clear-selection-button" type="button">選択をすべて解除</button>
+        <span id="selected-word-count" class="selected-word-count" aria-live="polite">0件選択中</span>
+        <button id="delete-selected-words-button" class="delete-selected-button" type="button" disabled>選択した0件を削除</button>
+        <div class="bulk-group-change">
+          <label for="bulk-group-select">選択単語のレベル</label>
+          <select id="bulk-group-select">
+            <option value="500">500点レベル</option>
+            <option value="730">730点レベル</option>
+            <option value="990">990点レベル</option>
+          </select>
+          <button id="change-selected-group-button" type="button" disabled>一括変更</button>
+        </div>
+      </div>
+
       <!-- 単語一覧はJavaScriptでここに追加します -->
       <ul id="word-list" class="word-list" aria-label="登録されている単語"></ul>
+
+      <!-- 一覧の直下から、学習情報を保持したまま削除済み単語を確認できます -->
+      <button id="show-deleted-button" class="deleted-words-button" type="button">
+        削除済み単語を見る <span id="deleted-count" class="deleted-count" aria-label="削除済み0件">0</span>
+      </button>
+
+      <!-- バックアップは単語管理画面の最後にまとめて配置します -->
+      <section class="backup-section" aria-label="データのバックアップ">
+        <div class="backup-panel">
+          <div><strong>データのバックアップ</strong><p>単語・復習リスト・学習記録・削除済み単語をまとめて保存、復元できます。</p></div>
+          <div class="backup-actions">
+            <button id="export-button" class="backup-button" type="button">JSONを書き出す</button>
+            <label class="backup-button import-label" for="import-input">JSONを読み込む</label>
+            <input id="import-input" type="file" accept="application/json,.json" hidden>
+          </div>
+        </div>
+        <p id="backup-message" class="form-message" aria-live="polite"></p>
+      </section>
+    </section>
+
+    <!-- ごみ箱へ移動した単語を復元・完全削除する画面です -->
+    <section id="deleted-view" class="management-card deleted-card" aria-labelledby="deleted-title" hidden>
+      <div class="management-header">
+        <div>
+          <p class="eyebrow">DELETED WORDS</p>
+          <h2 id="deleted-title">削除済み単語</h2>
+          <p>新しく削除した単語から表示しています。</p>
+        </div>
+        <button id="deleted-back-button" class="back-button" type="button">← 単語管理へ戻る</button>
+      </div>
+      <div class="deleted-toolbar">
+        <button id="restore-all-button" class="restore-all-button" type="button">すべて復元</button>
+        <button id="delete-all-forever-button" class="delete-forever-button" type="button">すべて完全に削除</button>
+      </div>
+      <p id="deleted-message" class="form-message" aria-live="polite"></p>
+      <ul id="deleted-list" class="deleted-list" aria-label="削除済みの単語"></ul>
     </section>
 
     <!-- 単語ごとの学習結果を確認する画面 -->
@@ -197,6 +295,8 @@
     </section>
   </main>
   <script src="choice-pool.js"></script>
+  <!-- 追加単語をクイズ処理より先に読み込みます -->
+  <script src="vocabulary-data.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
