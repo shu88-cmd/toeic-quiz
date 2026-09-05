@@ -27,6 +27,7 @@
           <div class="group-options">
             <button class="group-button group-500" type="button" data-group="500"><strong>500点</strong><span><b data-group-count="500">0</b>語</span></button>
             <button class="group-button group-730" type="button" data-group="730"><strong>730点</strong><span><b data-group-count="730">0</b>語</span></button>
+            <button class="group-button group-860" type="button" data-group="860"><strong>860点</strong><span><b data-group-count="860">0</b>語</span></button>
             <button class="group-button group-990" type="button" data-group="990"><strong>990点</strong><span><b data-group-count="990">0</b>語</span></button>
             <button class="group-button group-all active" type="button" data-group="all" aria-pressed="true"><strong>全単語</strong><span><b data-group-count="all">0</b>語をランダム</span></button>
           </div>
@@ -34,8 +35,9 @@
         <div id="direction-selection" hidden>
           <h2>出題モードを選ぶ</h2>
           <div class="direction-options">
-            <button class="direction-button" type="button" data-direction="english-to-japanese"><strong>English</strong><span>英語 → 日本語</span></button>
-            <button class="direction-button" type="button" data-direction="japanese-to-english"><strong>日本語</strong><span>日本語 → 英語</span></button>
+            <button class="direction-button" type="button" data-direction="english-to-japanese" aria-pressed="false"><strong>English</strong><span>英語 → 日本語</span></button>
+            <button class="direction-button" type="button" data-direction="japanese-to-english" aria-pressed="false"><strong>日本語</strong><span>日本語 → 英語</span></button>
+            <button class="direction-button direction-random" type="button" data-direction="random" aria-pressed="false"><strong>日英ランダム</strong><span>英語→日本語／日本語→英語を問題ごとに切り替え</span></button>
           </div>
           <button id="change-group-button" class="inline-back-button" type="button">← 目標スコアを選び直す</button>
         </div>
@@ -96,17 +98,30 @@
         <p id="result-group" class="result-group">全単語ランダム</p>
         <p id="result-time-setting" class="result-time-setting" hidden></p>
         <p class="final-score"><strong id="final-score">0</strong><span id="final-total"> / 10 問正解</span></p>
-        <div class="result-summary">
-          <p><span>正解</span><strong id="correct-count">0</strong></p>
-          <p><span>不正解</span><strong id="incorrect-count">0</strong></p>
-          <p><span>正答率</span><strong id="accuracy-rate">0%</strong></p>
-          <p id="timeout-summary" hidden><span>時間切れ</span><strong id="timeout-count">0</strong></p>
+        <div id="result-summary" class="result-summary no-timeout">
+          <p class="result-summary-item"><span>正解</span><strong id="correct-count">0</strong></p>
+          <p class="result-summary-item"><span>不正解</span><strong id="incorrect-count">0</strong></p>
+          <p class="result-summary-item accuracy-summary"><span>正答率</span><strong id="accuracy-rate">0%</strong></p>
+          <p id="timeout-summary" class="result-summary-item" hidden><span>時間切れ</span><strong id="timeout-count">0</strong></p>
         </div>
         <p id="result-message" class="result-message"></p>
+        <!-- 結果を確認した直後に、次の操作を選べるようにします -->
         <div class="result-actions">
           <button id="retry-button" class="next-button" type="button">もう一度挑戦</button>
           <button id="back-to-selection-button" class="selection-back-button" type="button">選択画面に戻る</button>
         </div>
+        <!-- このクイズで実際に出題された単語を、出題順に振り返ります -->
+        <section class="attempt-words" aria-labelledby="attempt-words-title">
+          <div class="attempt-words-header">
+            <h3 id="attempt-words-title">今回の出題単語</h3>
+            <div class="attempt-filter-buttons" role="group" aria-label="今回の出題単語を絞り込む">
+              <button class="attempt-filter-button active" type="button" data-attempt-filter="all" aria-pressed="true">すべて</button>
+              <button class="attempt-filter-button" type="button" data-attempt-filter="mistakes" aria-pressed="false">間違えた単語</button>
+            </div>
+          </div>
+          <p id="attempt-words-empty" class="attempt-words-empty" aria-live="polite" hidden></p>
+          <ul id="attempt-words-list" class="attempt-words-list" aria-label="今回出題された単語の一覧"></ul>
+        </section>
       </div>
       </section>
 
@@ -147,6 +162,7 @@
           <select id="group-input">
             <option value="500" selected>500点レベル</option>
             <option value="730">730点レベル</option>
+            <option value="860">860点レベル</option>
             <option value="990">990点レベル</option>
           </select>
         </div>
@@ -173,6 +189,7 @@
             <span>全行のレベル：</span>
             <button class="bulk-level-button" type="button" data-bulk-level="500">すべて500点</button>
             <button class="bulk-level-button" type="button" data-bulk-level="730">すべて730点</button>
+            <button class="bulk-level-button" type="button" data-bulk-level="860">すべて860点</button>
             <button class="bulk-level-button" type="button" data-bulk-level="990">すべて990点</button>
           </div>
           <p id="translation-selection-count" class="translation-selection-count" aria-live="polite">0件を登録します</p>
@@ -195,6 +212,7 @@
           <option value="all" selected>すべて</option>
           <option value="500">500点</option>
           <option value="730">730点</option>
+          <option value="860">860点</option>
           <option value="990">990点</option>
         </select>
       </div>
@@ -225,6 +243,7 @@
           <select id="bulk-group-select">
             <option value="500">500点レベル</option>
             <option value="730">730点レベル</option>
+            <option value="860">860点レベル</option>
             <option value="990">990点レベル</option>
           </select>
           <button id="change-selected-group-button" type="button" disabled>一括変更</button>
@@ -277,18 +296,28 @@
         <div><p class="eyebrow">LEARNING RECORDS</p><h2 id="records-title">学習記録</h2><p>英日・日英と復習モードの結果を合算しています。</p></div>
         <button id="records-back-button" class="back-button" type="button">← クイズへ戻る</button>
       </div>
+      <!-- 現在登録されている単語とID別の記録から、レベル別成績を毎回計算します -->
+      <div id="level-record-cards" class="level-record-cards" aria-label="レベル別の学習成績"></div>
+      <div class="record-level-filters" role="group" aria-label="学習記録をレベルで絞り込む">
+        <button class="record-level-filter active" type="button" data-record-group="all" aria-pressed="true">すべて</button>
+        <button class="record-level-filter" type="button" data-record-group="500" aria-pressed="false">500点</button>
+        <button class="record-level-filter" type="button" data-record-group="730" aria-pressed="false">730点</button>
+        <button class="record-level-filter" type="button" data-record-group="860" aria-pressed="false">860点</button>
+        <button class="record-level-filter" type="button" data-record-group="990" aria-pressed="false">990点</button>
+      </div>
       <div class="records-toolbar">
         <div class="sort-options" role="group" aria-label="並べ替え">
           <button class="sort-button active" type="button" data-sort="weak">苦手順</button>
           <button class="sort-button" type="button" data-sort="az">A〜Z順</button>
           <button class="sort-button" type="button" data-sort="high">正答率が高い順</button>
         </div>
-        <button id="reset-all-records-button" class="reset-all-button" type="button">全記録をリセット</button>
+        <button id="reset-all-records-button" class="reset-all-button" type="button">全レベルの記録をリセット</button>
       </div>
       <p id="records-message" class="form-message" aria-live="polite"></p>
+      <p id="records-empty" class="records-empty" aria-live="polite" hidden>このレベルには表示できる単語がありません。</p>
       <div class="records-table-wrap">
         <table class="records-table">
-          <thead><tr><th>英単語</th><th>日本語訳</th><th>正解</th><th>不正解</th><th>回答回数</th><th>正答率</th><th>操作</th></tr></thead>
+          <thead><tr><th>英単語</th><th>日本語訳</th><th>レベル</th><th>正解</th><th>不正解</th><th>回答回数</th><th>正答率</th><th>操作</th></tr></thead>
           <tbody id="records-body"></tbody>
         </table>
       </div>
@@ -297,6 +326,9 @@
   <script src="choice-pool.js"></script>
   <!-- 追加単語をクイズ処理より先に読み込みます -->
   <script src="vocabulary-data.js"></script>
+  <script src="vocabulary-data-860.js"></script>
+  <script src="vocabulary-data-500-v3.js"></script>
+  <script src="vocabulary-data-730-v4.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

@@ -1,36 +1,7 @@
-// TOEIC頻出単語と、日本語の意味を登録します
-const DEFAULT_VOCABULARY = [
-  { word: "candidate", meaning: "候補者" },
-  { word: "purchase", meaning: "購入する" },
-  { word: "available", meaning: "利用できる" },
-  { word: "conference", meaning: "会議" },
-  { word: "require", meaning: "必要とする" },
-  { word: "approximately", meaning: "およそ" },
-  { word: "department", meaning: "部署" },
-  { word: "submit", meaning: "提出する" },
-  { word: "maintain", meaning: "維持する" },
-  { word: "annual", meaning: "年に一度の" },
-  { word: "firm", meaning: "会社" },
-  { word: "confirm", meaning: "確認する" },
-  { word: "agency", meaning: "代理店" },
-  { word: "upcoming", meaning: "近日中の" },
-  { word: "arrange", meaning: "手配する" },
-  { word: "corporate", meaning: "企業の" },
-  { word: "procedure", meaning: "手順" },
-  { word: "personnel", meaning: "職員" },
-  { word: "representative", meaning: "代表者" },
-  { word: "documents", meaning: "書類" },
-  { word: "extension", meaning: "内線" },
-  { word: "inquire", meaning: "問い合わせる" },
-  { word: "merchandise", meaning: "商品" },
-  { word: "headquarters", meaning: "本社" },
-  { word: "admission", meaning: "入場" },
-  { word: "district", meaning: "地区" },
-  { word: "former", meaning: "以前の" },
-  { word: "complaints", meaning: "苦情" },
-  { word: "concerning", meaning: "〜に関して" },
-  { word: "reputation", meaning: "評判" }
-];
+// 初回起動時も、指定された新しい500点単語を基準に開始します
+const DEFAULT_VOCABULARY = Array.isArray(window.TOEIC_VOCABULARY_500_V3)
+  ? window.TOEIC_VOCABULARY_500_V3.map(({ word, meaning }) => ({ word, meaning }))
+  : [];
 
 // localStorageで使う保存名です。ブラウザを閉じてもデータが残ります
 const WORD_STORAGE_KEY = "toeicQuizVocabulary";
@@ -38,8 +9,10 @@ const REVIEW_STORAGE_KEY = "toeicQuizReviewWords";
 const LEARNING_STORAGE_KEY = "toeicQuizLearningRecords";
 const DELETED_STORAGE_KEY = "toeicQuizDeletedWords";
 const VOCABULARY_MIGRATION_KEY = "toeicQuizVocabularyMigrationVersion";
-const VOCABULARY_MIGRATION_VERSION = 1;
-const WORD_GROUPS = ["500", "730", "990"];
+const VOCABULARY_MIGRATION_VERSION = 4;
+const EXPANSION_MIGRATION_VERSION = 2;
+const REPLACEMENT_500_MIGRATION_VERSION = 3;
+const WORD_GROUPS = ["500", "730", "860", "990"];
 
 // レベルがない古いデータや不正な値は、安全に500点レベルとして扱います
 function normalizeGroup(group) {
@@ -92,16 +65,22 @@ function loadVocabulary() {
   }
 }
 
-// 保存済みの利用者にも追加300語を一度だけ安全に反映します
+// 保存済みの利用者にも、バージョンごとの追加単語を一度だけ安全に反映します
 function migrateExpandedVocabulary(savedVocabulary) {
   const currentVersion = Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0);
-  if (currentVersion >= VOCABULARY_MIGRATION_VERSION) return savedVocabulary;
+  if (currentVersion >= EXPANSION_MIGRATION_VERSION) return savedVocabulary;
 
-  const source = Array.isArray(window.TOEIC_VOCABULARY_EXPANSION_V1)
-    ? window.TOEIC_VOCABULARY_EXPANSION_V1
-    : [];
+  const migrations = [
+    // commissionはバージョン3で500点へ移したため、旧追加データは299語です
+    { version: 1, expectedCount: 299, items: window.TOEIC_VOCABULARY_EXPANSION_V1 },
+    { version: 2, expectedCount: 97, items: window.TOEIC_VOCABULARY_EXPANSION_V2 }
+  ];
+  const pendingMigrations = migrations.filter((migration) => migration.version > currentVersion);
   // データファイルが途中までしか読めなかった場合は、移行済みにせず次回再試行します
-  if (source.length !== 300) return savedVocabulary;
+  if (pendingMigrations.some((migration) =>
+    !Array.isArray(migration.items) || migration.items.length !== migration.expectedCount
+  )) return savedVocabulary;
+  const source = pendingMigrations.flatMap((migration) => migration.items);
   try {
     // 通常一覧だけでなく、削除済み一覧の単語も自動復活させないよう確認します
     const deletedWords = loadDeletedWords();
@@ -131,7 +110,7 @@ function migrateExpandedVocabulary(savedVocabulary) {
     const migratedVocabulary = [...savedVocabulary, ...additions];
     // 単語保存後にバージョンを記録します。途中で失敗しても次回は重複せず再試行できます
     localStorage.setItem(WORD_STORAGE_KEY, JSON.stringify(migratedVocabulary));
-    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(VOCABULARY_MIGRATION_VERSION));
+    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(EXPANSION_MIGRATION_VERSION));
     return migratedVocabulary;
   } catch (error) {
     // 容量不足などで保存できなくても、既存データはそのまま利用します
@@ -139,7 +118,168 @@ function migrateExpandedVocabulary(savedVocabulary) {
   }
 }
 
-let vocabulary = migrateExpandedVocabulary(loadVocabulary());
+// バージョン3では、古い500点単語と関連データを新しい67語へ完全に入れ替えます
+function migrate500Vocabulary(savedVocabulary) {
+  const currentVersion = Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0);
+  if (currentVersion >= REPLACEMENT_500_MIGRATION_VERSION) return savedVocabulary;
+  const replacements = Array.isArray(window.TOEIC_VOCABULARY_500_V3)
+    ? window.TOEIC_VOCABULARY_500_V3
+    : [];
+  if (replacements.length !== 67) return savedVocabulary;
+
+  const storageKeys = [WORD_STORAGE_KEY, REVIEW_STORAGE_KEY, LEARNING_STORAGE_KEY, DELETED_STORAGE_KEY, VOCABULARY_MIGRATION_KEY];
+  const previousValues = Object.fromEntries(storageKeys.map((key) => [key, localStorage.getItem(key)]));
+  try {
+    const rawRecords = JSON.parse(localStorage.getItem(LEARNING_STORAGE_KEY) || "{}");
+    const records = rawRecords && typeof rawRecords === "object" && !Array.isArray(rawRecords) ? { ...rawRecords } : {};
+    const rawReviews = JSON.parse(localStorage.getItem(REVIEW_STORAGE_KEY) || "[]");
+    const reviews = Array.isArray(rawReviews) ? rawReviews.filter((word) => typeof word === "string") : [];
+    const deletedWords = loadDeletedWords();
+    const replacementNames = new Set(replacements.map((item) => item.word.toLowerCase()));
+
+    // commissionは利用者の指定に従い、730点の旧データも削除して500点へ登録し直します
+    const isRemovalTarget = (item) => normalizeGroup(item.group) === "500" || item.word.toLowerCase() === "commission";
+    const removedNormal = savedVocabulary.filter(isRemovalTarget);
+    const removedDeleted = deletedWords.filter(isRemovalTarget);
+    const retainedVocabulary = savedVocabulary.filter((item) => !isRemovalTarget(item));
+    const retainedDeleted = deletedWords.filter((item) => !isRemovalTarget(item));
+
+    // 他レベルに同名語がある場合は、他レベルを変更せず移行全体を中止します
+    const conflictingWord = retainedVocabulary.find((item) => replacementNames.has(item.word.toLowerCase()))
+      || retainedDeleted.find((item) => replacementNames.has(item.word.toLowerCase()));
+    if (conflictingWord) throw new Error(`他レベルに同じ英単語があります：${conflictingWord.word}`);
+    const retainedIds = new Set([...retainedVocabulary, ...retainedDeleted].map((item) => item.id));
+
+    const replacementIds = new Set();
+    const validatedReplacements = replacements.map((item) => {
+      if (!item || typeof item.id !== "string" || typeof item.word !== "string" || typeof item.meaning !== "string"
+        || item.group !== "500" || !item.id.trim() || !item.word.trim() || !item.meaning.trim()
+        || replacementIds.has(item.id) || retainedIds.has(item.id)) throw new Error("500点の置換データが不正です");
+      replacementIds.add(item.id);
+      return { id: item.id, word: item.word, meaning: item.meaning, group: "500" };
+    });
+    if (new Set(validatedReplacements.map((item) => item.word.toLowerCase())).size !== 67) {
+      throw new Error("500点の置換データに重複があります");
+    }
+
+    const removedIds = new Set([...removedNormal, ...removedDeleted].map((item) => item.id));
+    Object.keys(records).forEach((id) => {
+      if (removedIds.has(id) || replacementIds.has(id)) delete records[id];
+    });
+    const removedNames = new Set([
+      ...removedNormal.map((item) => item.word.toLowerCase()),
+      ...removedDeleted.map((item) => item.word.toLowerCase()),
+      ...replacementNames
+    ]);
+    const nextReviews = reviews.filter((word) => !removedNames.has(word.toLowerCase()));
+    const nextVocabulary = [...retainedVocabulary, ...validatedReplacements];
+
+    // すべての新しい状態を作ってから保存し、移行番号は最後に記録します
+    localStorage.setItem(WORD_STORAGE_KEY, JSON.stringify(nextVocabulary));
+    localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(records));
+    localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(nextReviews));
+    localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(retainedDeleted));
+    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(REPLACEMENT_500_MIGRATION_VERSION));
+    return nextVocabulary;
+  } catch (error) {
+    // 途中で失敗した場合は、関連するLocalStorageをすべて移行前へ戻します
+    storageKeys.forEach((key) => {
+      try {
+        const previousValue = previousValues[key];
+        if (previousValue === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previousValue);
+      } catch (restoreError) {
+        // ブラウザの保存領域自体が使えない場合も、アプリの起動は継続します
+      }
+    });
+    return savedVocabulary;
+  }
+}
+
+// バージョン4では、旧730点単語を指定された90語へ完全に入れ替えます
+function migrate730Vocabulary(savedVocabulary) {
+  const currentVersion = Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0);
+  if (currentVersion >= VOCABULARY_MIGRATION_VERSION) return savedVocabulary;
+  const replacements = Array.isArray(window.TOEIC_VOCABULARY_730_V4)
+    ? window.TOEIC_VOCABULARY_730_V4
+    : [];
+  if (replacements.length !== 90) return savedVocabulary;
+
+  const storageKeys = [WORD_STORAGE_KEY, REVIEW_STORAGE_KEY, LEARNING_STORAGE_KEY, DELETED_STORAGE_KEY, VOCABULARY_MIGRATION_KEY];
+  const previousValues = Object.fromEntries(storageKeys.map((key) => [key, localStorage.getItem(key)]));
+  try {
+    const rawRecords = JSON.parse(localStorage.getItem(LEARNING_STORAGE_KEY) || "{}");
+    const records = rawRecords && typeof rawRecords === "object" && !Array.isArray(rawRecords) ? { ...rawRecords } : {};
+    const rawReviews = JSON.parse(localStorage.getItem(REVIEW_STORAGE_KEY) || "[]");
+    const reviews = Array.isArray(rawReviews) ? rawReviews.filter((word) => typeof word === "string") : [];
+    const deletedWords = loadDeletedWords();
+    const replacementNames = new Set(replacements.map((item) => item.word.toLowerCase()));
+    // 利用者の指定に従い、この3語は860点の旧データも削除して730点へ登録し直します
+    const transferredNames = new Set(["asset", "endeavor", "patent"]);
+    const isRemovalTarget = (item) => normalizeGroup(item.group) === "730"
+      || transferredNames.has(item.word.toLowerCase());
+    const removedNormal = savedVocabulary.filter(isRemovalTarget);
+    const removedDeleted = deletedWords.filter(isRemovalTarget);
+    const retainedVocabulary = savedVocabulary.filter((item) => !isRemovalTarget(item));
+    const retainedDeleted = deletedWords.filter((item) => !isRemovalTarget(item));
+
+    // 許可された3語以外に他レベルとの重複があれば、安全のため移行を中止します
+    const conflictingWord = retainedVocabulary.find((item) => replacementNames.has(item.word.toLowerCase()))
+      || retainedDeleted.find((item) => replacementNames.has(item.word.toLowerCase()));
+    if (conflictingWord) throw new Error(`他レベルに同じ英単語があります：${conflictingWord.word}`);
+    const retainedIds = new Set([...retainedVocabulary, ...retainedDeleted].map((item) => item.id));
+    const replacementIds = new Set();
+    const validatedReplacements = replacements.map((item) => {
+      if (!item || typeof item.id !== "string" || typeof item.word !== "string" || typeof item.meaning !== "string"
+        || item.group !== "730" || !item.id.trim() || !item.word.trim() || !item.meaning.trim()
+        || item.word !== item.word.toLowerCase()
+        || replacementIds.has(item.id) || retainedIds.has(item.id)) throw new Error("730点の置換データが不正です");
+      replacementIds.add(item.id);
+      return { id: item.id, word: item.word, meaning: item.meaning, group: "730" };
+    });
+    if (new Set(validatedReplacements.map((item) => item.word.toLowerCase())).size !== 90
+      || validatedReplacements.some((item) => item.word === "slater")) {
+      throw new Error("730点の置換データに重複または対象外の単語があります");
+    }
+
+    const removedIds = new Set([...removedNormal, ...removedDeleted].map((item) => item.id));
+    Object.keys(records).forEach((id) => {
+      if (removedIds.has(id) || replacementIds.has(id)) delete records[id];
+    });
+    const removedNames = new Set([
+      ...removedNormal.map((item) => item.word.toLowerCase()),
+      ...removedDeleted.map((item) => item.word.toLowerCase()),
+      ...replacementNames
+    ]);
+    const nextReviews = reviews.filter((word) => !removedNames.has(word.toLowerCase()));
+    const nextVocabulary = [...retainedVocabulary, ...validatedReplacements];
+
+    // 内容を検証してから保存し、移行番号はすべての保存が成功した最後に記録します
+    if (nextVocabulary.filter((item) => normalizeGroup(item.group) === "730").length !== 90) {
+      throw new Error("730点単語の件数が正しくありません");
+    }
+    localStorage.setItem(WORD_STORAGE_KEY, JSON.stringify(nextVocabulary));
+    localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(records));
+    localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(nextReviews));
+    localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(retainedDeleted));
+    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(VOCABULARY_MIGRATION_VERSION));
+    return nextVocabulary;
+  } catch (error) {
+    // 保存途中で失敗した場合は、他レベルを含むすべての値を移行前へ戻します
+    storageKeys.forEach((key) => {
+      try {
+        const previousValue = previousValues[key];
+        if (previousValue === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previousValue);
+      } catch (restoreError) {
+        // 保存領域そのものが使えない場合も、アプリの起動は継続します
+      }
+    });
+    return savedVocabulary;
+  }
+}
+
+let vocabulary = migrate730Vocabulary(migrate500Vocabulary(migrateExpandedVocabulary(loadVocabulary())));
 
 // HTMLの各要素をJavaScriptから使えるように取得します
 const wordElement = document.getElementById("word");
@@ -161,6 +301,10 @@ const resultLabelElement = document.getElementById("result-label");
 const correctCountElement = document.getElementById("correct-count");
 const incorrectCountElement = document.getElementById("incorrect-count");
 const accuracyRateElement = document.getElementById("accuracy-rate");
+const resultSummaryElement = document.getElementById("result-summary");
+const attemptWordsList = document.getElementById("attempt-words-list");
+const attemptWordsEmpty = document.getElementById("attempt-words-empty");
+const attemptFilterButtons = document.querySelectorAll(".attempt-filter-button");
 const retryButton = document.getElementById("retry-button");
 const backToSelectionButton = document.getElementById("back-to-selection-button");
 const normalButton = document.getElementById("normal-button");
@@ -228,6 +372,9 @@ const recordsButton = document.getElementById("records-button");
 const recordsBackButton = document.getElementById("records-back-button");
 const recordsBody = document.getElementById("records-body");
 const recordsMessage = document.getElementById("records-message");
+const recordsEmpty = document.getElementById("records-empty");
+const levelRecordCards = document.getElementById("level-record-cards");
+const recordLevelFilterButtons = document.querySelectorAll(".record-level-filter");
 const resetAllRecordsButton = document.getElementById("reset-all-records-button");
 const sortButtons = document.querySelectorAll(".sort-button");
 const exportButton = document.getElementById("export-button");
@@ -252,8 +399,13 @@ let isWeakMode = false;
 let editingWord = null;
 let selectedQuestionCount = 10;
 let selectedDirection = "english-to-japanese";
+// ランダムモードでも、表示中の1問ではこの方向を最後まで使います
+let currentQuestionDirection = "english-to-japanese";
+let currentAttemptHistory = [];
+let currentAttemptFilter = "all";
 let selectedWordGroup = "all";
 let currentRecordSort = "weak";
+let currentRecordGroup = "all";
 let currentWordSort = "az";
 let currentGroupFilter = "all";
 const selectedWordIds = new Set();
@@ -395,9 +547,12 @@ function updateLearningRecord(wordId, isCorrect) {
 
 function getRecordValues(item, records) {
   const record = records[item.id] || { correct: 0, incorrect: 0 };
-  const total = record.correct + record.incorrect;
-  const rate = total === 0 ? 0 : Math.round((record.correct / total) * 100);
-  return { correct: record.correct, incorrect: record.incorrect, total, rate };
+  // 壊れた値があっても、0以上の整数だけを集計へ使用します
+  const correct = Number.isInteger(record.correct) && record.correct >= 0 ? record.correct : 0;
+  const incorrect = Number.isInteger(record.incorrect) && record.incorrect >= 0 ? record.incorrect : 0;
+  const total = correct + incorrect;
+  const rate = total === 0 ? 0 : Math.round((correct / total) * 100);
+  return { correct, incorrect, total, rate };
 }
 
 // 回答済みの単語を、正答率が低い順・不正解数が多い順に並べます
@@ -412,10 +567,55 @@ function getWeakWords() {
     });
 }
 
-// 選択された順番で学習記録の表を描画します
+// 通常一覧にある単語だけを、現在の所属レベルごとに合計します
+function renderLevelRecordCards(records) {
+  levelRecordCards.innerHTML = "";
+  WORD_GROUPS.forEach((group) => {
+    const groupWords = vocabulary.filter((item) => normalizeGroup(item.group) === group);
+    const totals = groupWords.reduce((summary, item) => {
+      const values = getRecordValues(item, records);
+      summary.correct += values.correct;
+      summary.incorrect += values.incorrect;
+      if (values.total > 0) summary.studied++;
+      return summary;
+    }, { correct: 0, incorrect: 0, studied: 0 });
+    const answerCount = totals.correct + totals.incorrect;
+    const rateText = answerCount === 0 ? "未回答" : `${Math.round((totals.correct / answerCount) * 100)}%`;
+
+    const card = document.createElement("article");
+    card.className = `level-record-card level-record-${group}`;
+    const title = document.createElement("h3");
+    title.textContent = getGroupLabel(group);
+    const details = document.createElement("dl");
+    [
+      ["登録単語", `${groupWords.length}語`],
+      ["学習済み", `${totals.studied}語`],
+      ["正解", `${totals.correct}回`],
+      ["不正解", `${totals.incorrect}回`],
+      ["回答回数", `${answerCount}回`],
+      ["正答率", rateText]
+    ].forEach(([label, value]) => {
+      const wrapper = document.createElement("div");
+      const term = document.createElement("dt");
+      const description = document.createElement("dd");
+      term.textContent = label;
+      description.textContent = value;
+      wrapper.append(term, description);
+      details.appendChild(wrapper);
+    });
+    card.append(title, details);
+    levelRecordCards.appendChild(card);
+  });
+}
+
+// レベルで絞り込んだあと、選択された順番で学習記録の表を描画します
 function renderLearningRecords() {
   const records = loadLearningRecords();
-  const sortedWords = [...vocabulary].sort((a, b) => {
+  renderLevelRecordCards(records);
+  const filteredWords = currentRecordGroup === "all"
+    ? [...vocabulary]
+    : vocabulary.filter((item) => normalizeGroup(item.group) === currentRecordGroup);
+  const sortedWords = filteredWords.sort((a, b) => {
     const aRecord = getRecordValues(a, records);
     const bRecord = getRecordValues(b, records);
     if (currentRecordSort === "az") return a.word.localeCompare(b.word, "en", { sensitivity: "base" });
@@ -428,10 +628,21 @@ function renderLearningRecords() {
   });
 
   recordsBody.innerHTML = "";
+  recordsEmpty.hidden = sortedWords.length > 0;
+  recordsEmpty.textContent = "このレベルには表示できる単語がありません。";
   sortedWords.forEach((item) => {
     const values = getRecordValues(item, records);
     const row = document.createElement("tr");
-    [item.word, item.meaning, values.correct, values.incorrect, values.total].forEach((value) => {
+    [item.word, item.meaning].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+
+    const groupCell = document.createElement("td");
+    groupCell.appendChild(createGroupBadge(item.group));
+    row.appendChild(groupCell);
+    [values.correct, values.incorrect, values.total].forEach((value) => {
       const cell = document.createElement("td");
       cell.textContent = value;
       row.appendChild(cell);
@@ -439,8 +650,8 @@ function renderLearningRecords() {
 
     const rateCell = document.createElement("td");
     const rateBadge = document.createElement("span");
-    rateBadge.className = `rate-badge ${values.rate < 50 ? "rate-low" : values.rate < 80 ? "rate-mid" : "rate-high"}`;
-    rateBadge.textContent = `${values.rate}%`;
+    rateBadge.className = `rate-badge ${values.total === 0 ? "rate-unanswered" : values.rate < 50 ? "rate-low" : values.rate < 80 ? "rate-mid" : "rate-high"}`;
+    rateBadge.textContent = values.total === 0 ? "未回答" : `${values.rate}%`;
     rateCell.appendChild(rateBadge);
     row.appendChild(rateCell);
 
@@ -463,6 +674,12 @@ function openRecords() {
   deletedView.hidden = true;
   recordsView.hidden = false;
   recordsMessage.textContent = "";
+  currentRecordGroup = "all";
+  recordLevelFilterButtons.forEach((button) => {
+    const isSelected = button.dataset.recordGroup === "all";
+    button.classList.toggle("active", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
   renderLearningRecords();
 }
 
@@ -598,7 +815,7 @@ async function importBackup(event) {
 
     // 古いバックアップを読み込んだ場合も、削除済み単語を除いて追加語を再適用します
     localStorage.removeItem(VOCABULARY_MIGRATION_KEY);
-    vocabulary = migrateExpandedVocabulary(restored.vocabulary);
+    vocabulary = migrate730Vocabulary(migrate500Vocabulary(migrateExpandedVocabulary(restored.vocabulary)));
     updateReviewCount();
     updateDeletedCount();
     renderWordList();
@@ -1363,9 +1580,20 @@ function removeReviewWord(word) {
   saveReviewWords(loadReviewWords().filter((savedWord) => savedWord !== word));
 }
 
-// 現在の出題方向で表示する文字と正解を返します
-function getQuestionContent(item) {
-  const isEnglishFirst = selectedDirection === "english-to-japanese";
+function getDirectionLabel(direction) {
+  if (direction === "random") return "日英ランダム";
+  return direction === "english-to-japanese" ? "英語 → 日本語" : "日本語 → 英語";
+}
+
+// ランダムモードでは、問題を表示する直前にだけ実際の方向を決めます
+function determineQuestionDirection(directionMode) {
+  if (directionMode !== "random") return directionMode;
+  return Math.random() < 0.5 ? "english-to-japanese" : "japanese-to-english";
+}
+
+// 表示中の1問に確定した方向で、問題文と正解を返します
+function getQuestionContent(item, direction = currentQuestionDirection) {
+  const isEnglishFirst = direction === "english-to-japanese";
   return {
     prompt: isEnglishFirst ? item.word : item.meaning,
     answer: isEnglishFirst ? item.meaning : item.word
@@ -1467,8 +1695,8 @@ function getDistractors(currentQuestion, direction, registeredWords = vocabulary
 }
 
 // 正解1つと似た誤答3つを作り、正解位置を毎回ランダムにします
-function createChoices(currentQuestion) {
-  return shuffle([currentQuestion, ...getDistractors(currentQuestion, selectedDirection)]);
+function createChoices(currentQuestion, direction = currentQuestionDirection) {
+  return shuffle([currentQuestion, ...getDistractors(currentQuestion, direction)]);
 }
 
 // 選択肢専用データの単語を、重複しないよう登録単語へ追加します
@@ -1573,10 +1801,66 @@ function startQuestionTimer() {
   timerIntervalId = window.setInterval(updateTimerDisplay, 100);
 }
 
+// 回答が確定した問題を、結果画面用の一時配列へ1回だけ記録します
+function recordAttemptResult(result) {
+  const questionNumber = currentIndex + 1;
+  if (currentAttemptHistory.some((item) => item.questionNumber === questionNumber)) return;
+  const currentQuestion = questions[currentIndex];
+  currentAttemptHistory.push({
+    questionNumber,
+    wordId: currentQuestion.id,
+    word: currentQuestion.word,
+    meaning: currentQuestion.meaning,
+    direction: currentQuestionDirection,
+    result
+  });
+}
+
+function getAttemptResultLabel(result) {
+  if (result === "correct") return "正解";
+  if (result === "timeout") return "時間切れ";
+  return "不正解";
+}
+
+// HTML文字列を使わず、回答履歴から安全に一覧を作ります
+function renderAttemptWords() {
+  attemptWordsList.innerHTML = "";
+  const visibleHistory = currentAttemptFilter === "mistakes"
+    ? currentAttemptHistory.filter((item) => item.result === "incorrect" || item.result === "timeout")
+    : currentAttemptHistory;
+
+  attemptWordsEmpty.hidden = visibleHistory.length > 0;
+  attemptWordsEmpty.textContent = currentAttemptFilter === "mistakes" && visibleHistory.length === 0
+    ? "間違えた単語はありません。全問正解です！"
+    : "今回の回答履歴はありません。";
+
+  visibleHistory.forEach((item) => {
+    const row = document.createElement("li");
+    row.className = "attempt-word-item";
+    row.setAttribute("aria-label", `${item.questionNumber}問目、${item.word}、${item.meaning}、${getAttemptResultLabel(item.result)}`);
+
+    const number = document.createElement("span");
+    number.className = "attempt-word-number";
+    number.textContent = `${item.questionNumber}`;
+    const text = document.createElement("div");
+    text.className = "attempt-word-text";
+    const word = document.createElement("strong");
+    word.textContent = item.word;
+    const meaning = document.createElement("span");
+    meaning.textContent = item.meaning;
+    text.append(word, meaning);
+    const resultBadge = document.createElement("span");
+    resultBadge.className = `attempt-result-badge attempt-result-${item.result}`;
+    resultBadge.textContent = getAttemptResultLabel(item.result);
+    row.append(number, text, resultBadge);
+    attemptWordsList.appendChild(row);
+  });
+}
+
 // 回答後と時間切れ後に共通して、選択肢・解説・次ボタンを表示します
 function finishQuestion(selectedItem = null) {
   const currentQuestion = questions[currentIndex];
-  const correctAnswer = getQuestionContent(currentQuestion).answer;
+  const correctAnswer = getQuestionContent(currentQuestion, currentQuestionDirection).answer;
   document.querySelectorAll(".choice-button").forEach((button) => {
     button.disabled = true;
     if (button.dataset.answer === correctAnswer) button.classList.add("correct");
@@ -1596,7 +1880,8 @@ function handleTimeOut() {
   stopQuestionTimer();
   timedOutCount++;
   const currentQuestion = questions[currentIndex];
-  const correctAnswer = getQuestionContent(currentQuestion).answer;
+  const correctAnswer = getQuestionContent(currentQuestion, currentQuestionDirection).answer;
+  recordAttemptResult("timeout");
   updateLearningRecord(currentQuestion.id, false);
   addReviewWord(currentQuestion.word);
   feedbackElement.textContent = `時間切れ。正解は「${correctAnswer}」です。`;
@@ -1609,17 +1894,21 @@ function showQuestion() {
   stopQuestionTimer();
   answered = false;
   const currentQuestion = questions[currentIndex];
-  const questionContent = getQuestionContent(currentQuestion);
-  const directionLabel = selectedDirection === "english-to-japanese" ? "英語 → 日本語" : "日本語 → 英語";
+  // 方向は問題表示前に1回だけ決め、回答や時間切れまで再抽選しません
+  currentQuestionDirection = determineQuestionDirection(selectedDirection);
+  const questionContent = getQuestionContent(currentQuestion, currentQuestionDirection);
+  const directionLabel = getDirectionLabel(currentQuestionDirection);
   wordElement.textContent = questionContent.prompt;
   currentNumberElement.textContent = currentIndex + 1;
   totalNumberElement.textContent = questions.length;
   scoreElement.textContent = score;
   progressBar.style.width = `${((currentIndex + 1) / questions.length) * 100}%`;
   const quizTypeLabel = isReviewMode ? "復習モード" : isWeakMode ? "苦手単語モード" : "通常クイズ";
-  modeLabelElement.textContent = `${quizTypeLabel}｜${directionLabel}`;
+  modeLabelElement.textContent = selectedDirection === "random"
+    ? `${quizTypeLabel}｜日英ランダム｜今回：${directionLabel}`
+    : `${quizTypeLabel}｜${directionLabel}`;
   quizGroupLabel.textContent = getGroupLabel(selectedWordGroup);
-  choicesElement.setAttribute("aria-label", selectedDirection === "english-to-japanese" ? "日本語の選択肢" : "英単語の選択肢");
+  choicesElement.setAttribute("aria-label", currentQuestionDirection === "english-to-japanese" ? "日本語の選択肢" : "英単語の選択肢");
   feedbackElement.textContent = "";
   feedbackElement.className = "feedback";
   explanationArea.hidden = true;
@@ -1629,9 +1918,9 @@ function showQuestion() {
   nextButton.hidden = true;
   choicesElement.innerHTML = "";
 
-  currentChoiceItems = createChoices(currentQuestion);
+  currentChoiceItems = createChoices(currentQuestion, currentQuestionDirection);
   currentChoiceItems.forEach((choiceItem, index) => {
-    const choice = getQuestionContent(choiceItem).answer;
+    const choice = getQuestionContent(choiceItem, currentQuestionDirection).answer;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "choice-button";
@@ -1654,11 +1943,12 @@ function checkAnswer(selectedButton, selectedItem) {
   answered = true;
   stopQuestionTimer();
   const currentQuestion = questions[currentIndex];
-  const correctAnswer = getQuestionContent(currentQuestion).answer;
-  const selectedAnswer = getQuestionContent(selectedItem).answer;
+  const correctAnswer = getQuestionContent(currentQuestion, currentQuestionDirection).answer;
+  const selectedAnswer = getQuestionContent(selectedItem, currentQuestionDirection).answer;
   const isCorrect = selectedAnswer === correctAnswer;
 
   // answeredの確認後なので、連打されてもこの問題は1回だけ記録されます
+  recordAttemptResult(isCorrect ? "correct" : "incorrect");
   updateLearningRecord(currentQuestion.id, isCorrect);
 
   if (isCorrect) {
@@ -1690,11 +1980,16 @@ function showResult() {
   correctCountElement.textContent = score;
   incorrectCountElement.textContent = incorrectCount;
   accuracyRateElement.textContent = `${accuracyRate}%`;
-  resultDirectionElement.textContent = selectedDirection === "english-to-japanese" ? "英語 → 日本語" : "日本語 → 英語";
+  renderAttemptWords();
+  resultDirectionElement.textContent = getDirectionLabel(selectedDirection);
   resultGroupElement.textContent = getGroupLabel(selectedWordGroup);
   const usesTimer = selectedTimeLimit > 0;
   resultTimeSetting.hidden = !usesTimer;
   timeoutSummary.hidden = !usesTimer;
+
+  // 時間切れ欄の有無に合わせて、結果カードの列数をCSSで切り替えます。
+  resultSummaryElement.classList.toggle("has-timeout", usesTimer);
+  resultSummaryElement.classList.toggle("no-timeout", !usesTimer);
   if (usesTimer) {
     resultTimeSetting.textContent = `制限時間：1問 ${selectedTimeLimit}秒`;
     timeoutCountElement.textContent = timedOutCount;
@@ -1799,10 +2094,14 @@ function selectWordGroup(group) {
 
 // 出題方向を決定し、次の出題数選択へ進みます
 function selectDirection(direction) {
+  if (!["english-to-japanese", "japanese-to-english", "random"].includes(direction)) return;
   selectedDirection = direction;
-  const directionLabel = direction === "english-to-japanese"
-    ? "英語 → 日本語"
-    : "日本語 → 英語";
+  const directionLabel = getDirectionLabel(direction);
+  directionButtons.forEach((button) => {
+    const isSelected = button.dataset.direction === direction;
+    button.classList.toggle("active", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
   selectedDirectionLabel.textContent = `${getGroupLabel(selectedWordGroup)}｜${directionLabel}`;
   directionSelection.hidden = true;
   countSelection.hidden = false;
@@ -1831,8 +2130,21 @@ function startQuiz(questionCount = selectedQuestionCount) {
   score = 0;
   timedOutCount = 0;
   answered = false;
+  // 新しい挑戦では、前回の結果一覧を引き継ぎません
+  currentAttemptHistory = [];
+  currentAttemptFilter = "all";
+  attemptFilterButtons.forEach((button) => {
+    const isSelected = button.dataset.attemptFilter === "all";
+    button.classList.toggle("active", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  });
+  attemptWordsList.innerHTML = "";
+  attemptWordsEmpty.hidden = true;
   resultTimeSetting.hidden = true;
   timeoutSummary.hidden = true;
+  // 開始直後や開始できなかった結果では、非表示の時間切れ欄が空白を作らないようにします。
+  resultSummaryElement.classList.remove("has-timeout");
+  resultSummaryElement.classList.add("no-timeout");
   startArea.hidden = true;
   quizStatus.hidden = false;
   quizArea.hidden = false;
@@ -1840,7 +2152,10 @@ function startQuiz(questionCount = selectedQuestionCount) {
   reviewMessageElement.textContent = "";
 
   // 誤答は全グループと選択肢専用データから補うため、対象グループが少数でも開始できます
-  if (questions.length === 0 || getDistractors(questions[0], selectedDirection).length < 3) {
+  const directionsToValidate = selectedDirection === "random"
+    ? ["english-to-japanese", "japanese-to-english"]
+    : [selectedDirection];
+  if (questions.length === 0 || directionsToValidate.some((direction) => getDistractors(questions[0], direction).length < 3)) {
     quizStatus.hidden = true;
     quizArea.hidden = true;
     resultArea.hidden = false;
@@ -1850,7 +2165,7 @@ function startQuiz(questionCount = selectedQuestionCount) {
     correctCountElement.textContent = "0";
     incorrectCountElement.textContent = "0";
     accuracyRateElement.textContent = "0%";
-    resultDirectionElement.textContent = selectedDirection === "english-to-japanese" ? "英語 → 日本語" : "日本語 → 英語";
+    resultDirectionElement.textContent = getDirectionLabel(selectedDirection);
     resultGroupElement.textContent = getGroupLabel(selectedWordGroup);
     resultMessageElement.textContent = questions.length === 0
       ? "このグループには出題できる単語がありません。"
@@ -1894,6 +2209,17 @@ groupButtons.forEach((button) => {
 directionButtons.forEach((button) => {
   button.addEventListener("click", () => selectDirection(button.dataset.direction));
 });
+attemptFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    currentAttemptFilter = button.dataset.attemptFilter === "mistakes" ? "mistakes" : "all";
+    attemptFilterButtons.forEach((item) => {
+      const isSelected = item === button;
+      item.classList.toggle("active", isSelected);
+      item.setAttribute("aria-pressed", String(isSelected));
+    });
+    renderAttemptWords();
+  });
+});
 changeGroupButton.addEventListener("click", () => {
   groupSelection.hidden = false;
   directionSelection.hidden = true;
@@ -1932,6 +2258,17 @@ sortButtons.forEach((button) => {
   button.addEventListener("click", () => {
     currentRecordSort = button.dataset.sort;
     sortButtons.forEach((item) => item.classList.toggle("active", item === button));
+    renderLearningRecords();
+  });
+});
+recordLevelFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    currentRecordGroup = WORD_GROUPS.includes(button.dataset.recordGroup) ? button.dataset.recordGroup : "all";
+    recordLevelFilterButtons.forEach((item) => {
+      const isSelected = item === button;
+      item.classList.toggle("active", isSelected);
+      item.setAttribute("aria-pressed", String(isSelected));
+    });
     renderLearningRecords();
   });
 });

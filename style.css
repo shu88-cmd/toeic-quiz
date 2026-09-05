@@ -18,6 +18,11 @@
   box-sizing: border-box;
 }
 
+/* hidden属性が付いた画面は、ほかのレイアウト指定より優先して隠します */
+[hidden] {
+  display: none !important;
+}
+
 body {
   min-height: 100vh;
   margin: 0;
@@ -92,9 +97,10 @@ h1 {
   font-weight: 800;
 }
 .start-description { margin: 0 0 27px; color: var(--muted); }
-.count-options,
-.direction-options,
-.group-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.count-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.direction-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.group-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.group-all { grid-column: 1 / -1; }
 .count-button,
 .direction-button,
 .group-button {
@@ -115,9 +121,12 @@ h1 {
 .group-button span { color: var(--muted); font-size: 0.86rem; font-weight: 700; }
 .group-button span b { color: inherit; }
 .direction-button strong { margin-bottom: 7px; font-size: 1.4rem; }
+.direction-random strong { font-size: 1.12rem; }
+.direction-random span { display: block; line-height: 1.5; }
 .group-button strong { margin-bottom: 5px; font-size: 1.5rem; }
 .count-button:hover, .count-button:focus-visible,
 .direction-button:hover, .direction-button:focus-visible,
+.direction-button.active,
 .group-button:hover, .group-button:focus-visible,
 .group-button.active {
   border-color: var(--blue);
@@ -713,6 +722,7 @@ h2 {
 .word-group-badge { justify-self: start; white-space: nowrap; padding: 5px 8px; border-radius: 99px; font-size: 0.72rem; font-weight: 800; }
 .group-500-badge, .deleted-word-text .group-500-badge { color: #27618c; background: #e7f4ff; }
 .group-730-badge, .deleted-word-text .group-730-badge { color: #7b5a00; background: #fff3c4; }
+.group-860-badge, .deleted-word-text .group-860-badge { color: #9a4b12; background: #ffeadb; }
 .group-990-badge, .deleted-word-text .group-990-badge { color: #7040a0; background: #f2e9ff; }
 .word-actions { display: flex; gap: 7px; }
 .edit-button,
@@ -723,6 +733,21 @@ h2 {
 .empty-list { padding: 28px 0; color: var(--muted); text-align: center; }
 
 /* 学習記録の操作欄と表 */
+.level-record-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.level-record-card { padding: 15px; border: 1px solid var(--line); border-left-width: 5px; border-radius: 12px; background: white; }
+.level-record-card h3 { margin: 0 0 12px; font-size: 0.95rem; }
+.level-record-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 0; }
+.level-record-card dl div { min-width: 0; }
+.level-record-card dt { color: var(--muted); font-size: 0.7rem; font-weight: 700; }
+.level-record-card dd { margin: 2px 0 0; font-size: 0.9rem; font-weight: 800; overflow-wrap: anywhere; }
+.level-record-500 { border-left-color: #4b9bd3; background: #f6fbff; }
+.level-record-730 { border-left-color: #d3a921; background: #fffdf4; }
+.level-record-860 { border-left-color: #d67632; background: #fff9f5; }
+.level-record-990 { border-left-color: #8754b5; background: #fbf8ff; }
+.record-level-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 18px; }
+.record-level-filter { min-height: 42px; padding: 0 8px; border: 1.5px solid var(--line); border-radius: 9px; color: var(--navy); background: white; font: inherit; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.record-level-filter:hover, .record-level-filter:focus-visible, .record-level-filter.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); outline: none; }
+.records-empty { margin: 14px 0 0; padding: 16px; border-radius: 10px; color: var(--muted); background: var(--background); text-align: center; }
 .records-toolbar { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; }
 .sort-options { display: flex; flex-wrap: wrap; gap: 7px; }
 .sort-button, .reset-all-button, .record-reset-button {
@@ -732,7 +757,7 @@ h2 {
 .sort-button.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
 .reset-all-button, .record-reset-button { color: var(--wrong); }
 .records-table-wrap { width: 100%; margin-top: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.records-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 0.88rem; }
+.records-table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: 0.88rem; }
 .records-table th, .records-table td { padding: 13px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .records-table th { color: var(--muted); font-size: 0.75rem; }
 .rate-badge { display: inline-block; min-width: 52px; padding: 5px 8px; border-radius: 99px; text-align: center; font-weight: 800; }
@@ -786,18 +811,39 @@ h2 {
 
 .result-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   margin: 18px 0;
 }
+.result-summary.has-timeout { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.result-summary.no-timeout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .result-direction { display: inline-block; margin: -2px 0 0; padding: 5px 12px; border-radius: 99px; color: var(--blue); background: var(--blue-light); font-size: 0.82rem; font-weight: 800; }
 .result-group { display: inline-block; margin: 8px 0 0 6px; padding: 5px 12px; border-radius: 99px; color: #7040a0; background: #f2e9ff; font-size: 0.82rem; font-weight: 800; }
 .result-time-setting { display: inline-block; margin: 8px 0 0 6px; padding: 5px 12px; border-radius: 99px; color: var(--muted); background: var(--background); font-size: 0.82rem; font-weight: 800; }
 .result-time-setting[hidden] { display: none; }
-.result-summary p { margin: 0; padding: 12px 6px; border-radius: 11px; background: var(--background); }
-.result-summary span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 0.75rem; }
-.result-summary strong { font-size: 1.15rem; }
-.result-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* 4つの結果項目は高さをそろえ、数字が増えても枠からはみ出さないようにします。 */
+.result-summary p { min-width: 0; min-height: 78px; margin: 0; padding: 12px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 11px; background: var(--background); text-align: center; }
+.result-summary span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+.result-summary strong { max-width: 100%; font-size: clamp(1.2rem, 3vw, 1.45rem); line-height: 1.2; overflow-wrap: anywhere; }
+.attempt-words { margin: 26px 0 0; padding-top: 22px; border-top: 1px solid var(--line); text-align: left; }
+.attempt-words-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.attempt-words-header h3 { margin: 0; font-size: 1rem; }
+.attempt-filter-buttons { display: flex; gap: 7px; }
+.attempt-filter-button { min-height: 40px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 9px; color: var(--navy); background: white; font: inherit; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.attempt-filter-button:hover, .attempt-filter-button:focus-visible, .attempt-filter-button.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); outline: none; }
+.attempt-words-list { margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); list-style: none; }
+.attempt-word-item { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 13px 4px; border-bottom: 1px solid var(--line); }
+.attempt-word-number { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: var(--muted); background: var(--background); font-size: 0.78rem; font-weight: 800; }
+.attempt-word-text { min-width: 0; display: grid; gap: 3px; }
+.attempt-word-text strong { font-family: Georgia, serif; overflow-wrap: anywhere; }
+.attempt-word-text span { color: var(--muted); font-size: 0.84rem; overflow-wrap: anywhere; }
+.attempt-result-badge { white-space: nowrap; padding: 5px 9px; border-radius: 99px; font-size: 0.74rem; font-weight: 800; }
+.attempt-result-correct { color: var(--correct); background: var(--correct-bg); }
+.attempt-result-incorrect { color: var(--wrong); background: var(--wrong-bg); }
+.attempt-result-timeout { color: #a44a08; background: #fff0dd; }
+.attempt-words-empty { margin: 14px 0 0; padding: 14px; border-radius: 10px; color: var(--correct); background: var(--correct-bg); font-size: 0.86rem; font-weight: 700; text-align: center; }
+.result-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
+.result-actions button { width: 100%; min-width: 0; min-height: 54px; white-space: nowrap; }
 .selection-back-button {
   min-height: 54px;
   border: 1.5px solid var(--line);
@@ -836,15 +882,28 @@ kbd {
   .quiz-card { border-radius: 19px; }
   .choices { grid-template-columns: 1fr; }
   .count-options { grid-template-columns: 1fr 1fr; }
+  .direction-options { grid-template-columns: 1fr; }
+  .group-options { grid-template-columns: 1fr; }
+  .group-all { grid-column: auto; }
   .time-limit-options { grid-template-columns: 1fr; }
   .time-limit-button { min-height: 50px; }
-  .result-summary { grid-template-columns: repeat(2, 1fr); }
+  .result-summary, .result-summary.has-timeout, .result-summary.no-timeout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 時間制限なしでは、正答率を2列分に広げて空欄を残しません。 */
+  .result-summary.no-timeout .accuracy-summary { grid-column: 1 / -1; }
   .count-button { min-height: 84px; }
   .result-actions { grid-template-columns: 1fr; }
+  .attempt-words-header { align-items: stretch; flex-direction: column; }
+  .attempt-filter-buttons { display: grid; grid-template-columns: 1fr 1fr; }
+  .attempt-filter-button { min-height: 46px; }
+  .attempt-word-item { grid-template-columns: 34px minmax(0, 1fr); gap: 8px 10px; }
+  .attempt-result-badge { grid-column: 2; justify-self: start; }
   .progress-track { margin-bottom: 30px; }
   .hint { line-height: 1.7; }
   .utility-actions { grid-template-columns: 1fr; }
   .records-toolbar { align-items: stretch; flex-direction: column; }
+  .level-record-cards { grid-template-columns: 1fr; }
+  .record-level-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .record-level-filter { min-height: 48px; }
   .reset-all-button { width: 100%; }
   .management-card { border-radius: 19px; }
   .management-header { display: grid; }

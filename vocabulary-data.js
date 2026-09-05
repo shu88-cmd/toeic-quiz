@@ -104,12 +104,11 @@ window.TOEIC_VOCABULARY_EXPANSION_V1 = [
   { id: "toeic-v1-500-099", word: "website", meaning: "ウェブサイト", group: "500" },
   { id: "toeic-v1-500-100", word: "workplace", meaning: "職場", group: "500" },
 
-  // 730点レベル：業務で使われる実務的な中級語彙100語
+  // 730点レベル：commissionを500点へ移した後の実務的な中級語彙99語
   { id: "toeic-v1-730-001", word: "allocate", meaning: "割り当てる", group: "730" },
   { id: "toeic-v1-730-002", word: "authorize", meaning: "権限を与える", group: "730" },
   { id: "toeic-v1-730-003", word: "benchmark", meaning: "評価基準", group: "730" },
   { id: "toeic-v1-730-004", word: "brochure", meaning: "案内冊子", group: "730" },
-  { id: "toeic-v1-730-005", word: "commission", meaning: "販売手数料", group: "730" },
   { id: "toeic-v1-730-006", word: "compensate", meaning: "補償する", group: "730" },
   { id: "toeic-v1-730-007", word: "comply", meaning: "従う", group: "730" },
   { id: "toeic-v1-730-008", word: "consultant", meaning: "顧問", group: "730" },
