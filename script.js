@@ -290,10 +290,16 @@ const explanationList = document.getElementById("explanation-list");
 const nextButton = document.getElementById("next-button");
 const currentNumberElement = document.getElementById("current-number");
 const totalNumberElement = document.getElementById("total-number");
+const operationTargetElement = document.getElementById("operation-target");
+const operationModeElement = document.getElementById("operation-mode");
+const operationTimeElement = document.getElementById("operation-time");
 const scoreElement = document.getElementById("score");
 const progressBar = document.getElementById("progress-bar");
 const quizArea = document.getElementById("quiz-area");
 const resultArea = document.getElementById("result-area");
+const missionResultElement = document.getElementById("mission-result");
+const missionResultStamp = document.getElementById("mission-result-stamp");
+const missionResultDescription = document.getElementById("mission-result-description");
 const finalScoreElement = document.getElementById("final-score");
 const finalTotalElement = document.getElementById("final-total");
 const resultMessageElement = document.getElementById("result-message");
@@ -1889,6 +1895,18 @@ function handleTimeOut() {
   finishQuestion();
 }
 
+// 表示専用の処理です。問題の選択・ランダム方向・タイマーの動作は変更しません。
+function updateOperationStatus() {
+  currentNumberElement.textContent = String(currentIndex + 1).padStart(2, "0");
+  totalNumberElement.textContent = questions.length;
+  operationTargetElement.textContent = selectedWordGroup === "all" ? "ALL" : selectedWordGroup;
+  operationTargetElement.setAttribute("aria-label", getGroupLabel(selectedWordGroup));
+  // ランダム出題でも帯は選択したモードを表示し、今回の方向は既存の問題ラベルに任せます。
+  operationModeElement.textContent = getDirectionLabel(selectedDirection);
+  operationTimeElement.textContent = selectedTimeLimit === 0 ? "UNLIMITED" : `${selectedTimeLimit} SEC`;
+  operationTimeElement.setAttribute("aria-label", selectedTimeLimit === 0 ? "制限時間なし" : `1問あたり${selectedTimeLimit}秒`);
+}
+
 // 現在の問題を画面に表示します
 function showQuestion() {
   stopQuestionTimer();
@@ -1899,8 +1917,7 @@ function showQuestion() {
   const questionContent = getQuestionContent(currentQuestion, currentQuestionDirection);
   const directionLabel = getDirectionLabel(currentQuestionDirection);
   wordElement.textContent = questionContent.prompt;
-  currentNumberElement.textContent = currentIndex + 1;
-  totalNumberElement.textContent = questions.length;
+  updateOperationStatus();
   scoreElement.textContent = score;
   progressBar.style.width = `${((currentIndex + 1) / questions.length) * 100}%`;
   const quizTypeLabel = isReviewMode ? "復習モード" : isWeakMode ? "苦手単語モード" : "通常クイズ";
@@ -1966,9 +1983,49 @@ function checkAnswer(selectedButton, selectedItem) {
   finishQuestion(selectedItem);
 }
 
+// 表示済みの整数の正答率で判定します。丸めて100%でも、全問正解以外は最上位にしません。
+function getMissionResult(accuracyRate, correctCount, totalCount) {
+  if (totalCount <= 0) return null;
+  if (accuracyRate === 100 && correctCount === totalCount) {
+    return { title: "乃木レベル！！", description: "任務完遂。すべての単語を掌握しました。", className: "mission-rank-perfect", shine: true };
+  }
+  if (accuracyRate >= 90) {
+    return { title: "あなたは別班だ！", description: "極めて優秀な成績です。", className: "mission-rank-excellent", shine: false };
+  }
+  if (accuracyRate >= 80) {
+    return { title: "あなたは公安だ！", description: "確かな実力があります。", className: "mission-rank-good", shine: false };
+  }
+  return { title: "よーお山本", description: "復習リストを確認し、再挑戦しましょう。", className: "mission-rank-retry", shine: false };
+}
+
+// 新しい挑戦や0問の結果に、前回の文章・判定クラス・光を残さないようにします。
+function resetMissionResult() {
+  missionResultElement.hidden = true;
+  missionResultElement.classList.remove("mission-rank-perfect", "mission-rank-excellent", "mission-rank-good", "mission-rank-retry", "mission-shine");
+  missionResultStamp.textContent = "";
+  missionResultDescription.textContent = "";
+}
+
+function renderMissionResult(accuracyRate, correctCount, totalCount) {
+  resetMissionResult();
+  const result = getMissionResult(accuracyRate, correctCount, totalCount);
+  if (!result) return;
+  missionResultStamp.textContent = result.title;
+  missionResultDescription.textContent = result.description;
+  missionResultElement.classList.add(result.className);
+  missionResultElement.hidden = false;
+  if (result.shine) {
+    // クラスを外した状態の描画を確定し、再挑戦での満点でも1回だけ再生します。
+    // 光はCSSの疑似要素なので、DOM要素が増えることはありません。
+    void missionResultStamp.offsetWidth;
+    missionResultElement.classList.add("mission-shine");
+  }
+}
+
 // 全問終了後に成績を表示します
 function showResult() {
   stopQuestionTimer();
+  resetMissionResult();
   quizStatus.hidden = true;
   startArea.hidden = true;
   quizArea.hidden = true;
@@ -1980,6 +2037,7 @@ function showResult() {
   correctCountElement.textContent = score;
   incorrectCountElement.textContent = incorrectCount;
   accuracyRateElement.textContent = `${accuracyRate}%`;
+  renderMissionResult(accuracyRate, score, questions.length);
   renderAttemptWords();
   resultDirectionElement.textContent = getDirectionLabel(selectedDirection);
   resultGroupElement.textContent = getGroupLabel(selectedWordGroup);
@@ -2031,6 +2089,7 @@ function filterWordsBySelectedGroup(words) {
 // 通常・復習・苦手モードのグループ選択画面を表示します
 function showQuestionCountSelection(mode = "normal") {
   stopQuestionTimer();
+  resetMissionResult();
   isReviewMode = mode === "review";
   isWeakMode = mode === "weak";
   selectedWordGroup = "all";
@@ -2109,6 +2168,7 @@ function selectDirection(direction) {
 
 // 選択した問題数でクイズを開始します
 function startQuiz(questionCount = selectedQuestionCount) {
+  resetMissionResult();
   selectedQuestionCount = questionCount;
   const groupedWords = filterWordsBySelectedGroup(getCurrentModeWords());
   // 苦手モードは正答率順を保ち、それ以外は対象グループ内をランダムにします

@@ -20,6 +20,7 @@
       <section class="quiz-card" aria-labelledby="word">
       <!-- 目標スコア、出題方向、出題数と制限時間の順に選びます -->
       <div id="start-area" class="start-area">
+        <p class="screen-label">MISSION SETUP</p>
         <p id="start-mode-label" class="question-label">NORMAL QUIZ</p>
         <p id="start-description" class="start-description">出題する目標スコアを選択してください。</p>
         <div id="group-selection">
@@ -61,8 +62,15 @@
       </div>
 
       <div id="quiz-status" hidden>
+      <p class="screen-label">ACTIVE MISSION</p>
+      <!-- 問題番号は既存のIDをそのまま使い、クイズ条件は現在の設定から表示します。 -->
+      <dl class="operation-status" aria-label="現在の出題条件">
+        <div><dt>OPERATION <span>問題</span></dt><dd><span id="current-number">01</span> / <span id="total-number">10</span></dd></div>
+        <div><dt>TARGET <span>目標スコア</span></dt><dd id="operation-target">ALL</dd></div>
+        <div><dt>MODE <span>出題モード</span></dt><dd id="operation-mode">英語 → 日本語</dd></div>
+        <div><dt>TIME <span>制限時間</span></dt><dd id="operation-time">UNLIMITED</dd></div>
+      </dl>
       <div class="status-row">
-        <p class="question-count"><span id="current-number">1</span> / <span id="total-number">30</span></p>
         <p class="score">正解 <strong id="score">0</strong> 問</p>
       </div>
       <div class="progress-track" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
@@ -91,6 +99,7 @@
 
       <!-- クイズ終了時の結果画面 -->
       <div id="result-area" class="result-area" hidden>
+        <p id="mission-result-label" class="screen-label">MISSION RESULT</p>
         <div class="result-icon" aria-hidden="true">✓</div>
         <p id="result-label" class="question-label">QUIZ COMPLETE</p>
         <h2>おつかれさまでした！</h2>
@@ -98,6 +107,11 @@
         <p id="result-group" class="result-group">全単語ランダム</p>
         <p id="result-time-setting" class="result-time-setting" hidden></p>
         <p class="final-score"><strong id="final-score">0</strong><span id="final-total"> / 10 問正解</span></p>
+        <!-- 判定は結果が確定してから表示します。既存の要素を毎回更新します。 -->
+        <section id="mission-result" class="mission-result" aria-labelledby="mission-result-label" hidden>
+          <p id="mission-result-stamp" class="mission-result-stamp"></p>
+          <p id="mission-result-description" class="mission-result-description"></p>
+        </section>
         <div id="result-summary" class="result-summary no-timeout">
           <p class="result-summary-item"><span>正解</span><strong id="correct-count">0</strong></p>
           <p class="result-summary-item"><span>不正解</span><strong id="incorrect-count">0</strong></p>
@@ -141,7 +155,7 @@
     <section id="management-view" class="management-card" aria-labelledby="management-title" hidden>
       <div class="management-header">
         <div>
-          <p class="eyebrow">VOCABULARY</p>
+          <p class="screen-label">WORD DATABASE</p>
           <h2 id="management-title">単語を管理</h2>
           <p>登録中の単語：<strong id="word-count">0</strong>語</p>
         </div>
@@ -276,7 +290,7 @@
     <section id="deleted-view" class="management-card deleted-card" aria-labelledby="deleted-title" hidden>
       <div class="management-header">
         <div>
-          <p class="eyebrow">DELETED WORDS</p>
+          <p class="screen-label">ARCHIVE</p>
           <h2 id="deleted-title">削除済み単語</h2>
           <p>新しく削除した単語から表示しています。</p>
         </div>
@@ -293,7 +307,7 @@
     <!-- 単語ごとの学習結果を確認する画面 -->
     <section id="records-view" class="management-card records-card" aria-labelledby="records-title" hidden>
       <div class="management-header">
-        <div><p class="eyebrow">LEARNING RECORDS</p><h2 id="records-title">学習記録</h2><p>英日・日英と復習モードの結果を合算しています。</p></div>
+        <div><p class="screen-label">INTELLIGENCE REPORT</p><h2 id="records-title">学習記録</h2><p>英日・日英と復習モードの結果を合算しています。</p></div>
         <button id="records-back-button" class="back-button" type="button">← クイズへ戻る</button>
       </div>
       <!-- 現在登録されている単語とID別の記録から、レベル別成績を毎回計算します -->
