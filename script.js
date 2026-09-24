@@ -9,7 +9,10 @@ const REVIEW_STORAGE_KEY = "toeicQuizReviewWords";
 const LEARNING_STORAGE_KEY = "toeicQuizLearningRecords";
 const DELETED_STORAGE_KEY = "toeicQuizDeletedWords";
 const VOCABULARY_MIGRATION_KEY = "toeicQuizVocabularyMigrationVersion";
-const VOCABULARY_MIGRATION_VERSION = 4;
+const VOCABULARY_MIGRATION_VERSION = 6;
+const REPLACEMENT_860_MIGRATION_VERSION = 5;
+const REPLACEMENT_730_MIGRATION_VERSION = 4;
+const MIGRATION_JOURNAL_KEY = "toeicQuizMigrationJournalV5";
 const EXPANSION_MIGRATION_VERSION = 2;
 const REPLACEMENT_500_MIGRATION_VERSION = 3;
 const WORD_GROUPS = ["500", "730", "860", "990"];
@@ -71,9 +74,8 @@ function migrateExpandedVocabulary(savedVocabulary) {
   if (currentVersion >= EXPANSION_MIGRATION_VERSION) return savedVocabulary;
 
   const migrations = [
-    // commissionはバージョン3で500点へ移したため、旧追加データは299語です
-    { version: 1, expectedCount: 299, items: window.TOEIC_VOCABULARY_EXPANSION_V1 },
-    { version: 2, expectedCount: 97, items: window.TOEIC_VOCABULARY_EXPANSION_V2 }
+    // 旧990点はバージョン6で置換するため、過去の500・730点199語だけを扱います
+    { version: 1, expectedCount: 199, items: window.TOEIC_VOCABULARY_EXPANSION_V1 }
   ];
   const pendingMigrations = migrations.filter((migration) => migration.version > currentVersion);
   // データファイルが途中までしか読めなかった場合は、移行済みにせず次回再試行します
@@ -199,7 +201,7 @@ function migrate500Vocabulary(savedVocabulary) {
 // バージョン4では、旧730点単語を指定された90語へ完全に入れ替えます
 function migrate730Vocabulary(savedVocabulary) {
   const currentVersion = Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0);
-  if (currentVersion >= VOCABULARY_MIGRATION_VERSION) return savedVocabulary;
+  if (currentVersion >= REPLACEMENT_730_MIGRATION_VERSION) return savedVocabulary;
   const replacements = Array.isArray(window.TOEIC_VOCABULARY_730_V4)
     ? window.TOEIC_VOCABULARY_730_V4
     : [];
@@ -262,7 +264,7 @@ function migrate730Vocabulary(savedVocabulary) {
     localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(records));
     localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(nextReviews));
     localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(retainedDeleted));
-    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(VOCABULARY_MIGRATION_VERSION));
+    localStorage.setItem(VOCABULARY_MIGRATION_KEY, String(REPLACEMENT_730_MIGRATION_VERSION));
     return nextVocabulary;
   } catch (error) {
     // 保存途中で失敗した場合は、他レベルを含むすべての値を移行前へ戻します
@@ -279,7 +281,146 @@ function migrate730Vocabulary(savedVocabulary) {
   }
 }
 
-let vocabulary = migrate730Vocabulary(migrate500Vocabulary(migrateExpandedVocabulary(loadVocabulary())));
+// 保存が中断された場合は、次回起動時に全キーを移行前へ戻します。
+function recoverVocabularyMigration() {
+  const raw = localStorage.getItem(MIGRATION_JOURNAL_KEY);
+  if (!raw) return;
+  const previous = JSON.parse(raw);
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  }
+  localStorage.removeItem(MIGRATION_JOURNAL_KEY);
+}
+
+function saveVocabularyState(state, version) {
+  const values = {
+    [WORD_STORAGE_KEY]: JSON.stringify(state.vocabulary),
+    [LEARNING_STORAGE_KEY]: JSON.stringify(state.learningRecords),
+    [REVIEW_STORAGE_KEY]: JSON.stringify(state.reviewWords),
+    [DELETED_STORAGE_KEY]: JSON.stringify(state.deletedWords),
+    [VOCABULARY_MIGRATION_KEY]: String(version)
+  };
+  const previous = Object.fromEntries(Object.keys(values).map(key => [key, localStorage.getItem(key)]));
+  localStorage.setItem(MIGRATION_JOURNAL_KEY, JSON.stringify(previous));
+  try {
+    for (const [key, value] of Object.entries(values)) localStorage.setItem(key, value);
+    localStorage.removeItem(MIGRATION_JOURNAL_KEY);
+  } catch (error) {
+    recoverVocabularyMigration();
+    throw error;
+  }
+}
+
+// メモリ上で検証してから、新IDの200語へ置換します。
+function prepare860Vocabulary(state) {
+  const replacements = window.TOEIC_VOCABULARY_860_V5;
+  if (!Array.isArray(replacements) || replacements.length !== 200) throw new Error("860点の200語を読み込めませんでした。");
+  const names = new Set();
+  const ids = new Set();
+  for (const item of replacements) {
+    if (!item || typeof item.id !== "string" || !item.id.trim()
+      || typeof item.word !== "string" || !item.word.trim() || item.word !== item.word.toLowerCase()
+      || typeof item.meaning !== "string" || !item.meaning.trim() || item.group !== "860"
+      || names.has(item.word) || ids.has(item.id)) throw new Error("860点の置換データが不正です。");
+    names.add(item.word);
+    ids.add(item.id);
+  }
+  const isTarget = item => normalizeGroup(item.group) === "860"
+    || (normalizeGroup(item.group) === "990" && ["shareholder", "incur"].includes(item.word.toLowerCase()));
+  const removed = [...state.vocabulary, ...state.deletedWords].filter(isTarget);
+  const retained = state.vocabulary.filter(item => !isTarget(item));
+  const deleted = state.deletedWords.filter(item => !isTarget(item));
+  const conflicts = [...retained, ...deleted].filter(item => names.has(item.word.toLowerCase()));
+  if (conflicts.length) throw new Error("他レベルと重複しています：" + conflicts.map(item => item.word + "（" + item.group + "点：" + item.meaning + "）").join("、"));
+  if ([...retained, ...deleted, ...removed].some(item => ids.has(item.id))) throw new Error("新しい860点IDが既存データと重複しています。");
+  const removedIds = new Set(removed.map(item => item.id));
+  const removedNames = new Set(removed.map(item => item.word.toLowerCase()));
+  const records = Object.fromEntries(Object.entries(state.learningRecords).filter(([id]) => !removedIds.has(id) && !ids.has(id)));
+  const reviews = state.reviewWords.filter(word => !removedNames.has(word.toLowerCase()) && !names.has(word.toLowerCase()));
+  const next = { vocabulary: [...retained, ...replacements.map(item => ({ ...item }))], deletedWords: deleted, learningRecords: records, reviewWords: reviews };
+  if (next.vocabulary.filter(item => item.group === "860").length !== 200
+    || JSON.stringify(next.vocabulary.filter(item => item.group !== "860")) !== JSON.stringify(retained)
+    || JSON.stringify(next.deletedWords) !== JSON.stringify(state.deletedWords.filter(item => !isTarget(item)))
+    || Object.entries(state.learningRecords).some(([id, record]) => !removedIds.has(id) && !ids.has(id) && JSON.stringify(records[id]) !== JSON.stringify(record))) {
+    throw new Error("860点の移行結果を検証できませんでした。");
+  }
+  return next;
+}
+
+function migrate860Vocabulary(savedVocabulary) {
+  if (Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0) >= REPLACEMENT_860_MIGRATION_VERSION) return savedVocabulary;
+  try {
+    const state = prepare860Vocabulary({
+      vocabulary: savedVocabulary,
+      deletedWords: JSON.parse(localStorage.getItem(DELETED_STORAGE_KEY) || "[]"),
+      learningRecords: JSON.parse(localStorage.getItem(LEARNING_STORAGE_KEY) || "{}"),
+      reviewWords: JSON.parse(localStorage.getItem(REVIEW_STORAGE_KEY) || "[]")
+    });
+    saveVocabularyState(state, REPLACEMENT_860_MIGRATION_VERSION);
+    return state.vocabulary;
+  } catch (error) {
+    window.alert("860点の入れ替えを完了できませんでした。保存データを確認してください。\n" + error.message);
+    return savedVocabulary;
+  }
+}
+
+// バージョン6では990点だけを、新IDの100語へ入れ替えます。
+function prepare990Vocabulary(state) {
+  const replacements = window.TOEIC_VOCABULARY_990_V6;
+  if (!Array.isArray(replacements) || replacements.length !== 100) throw new Error("990点の100語を読み込めませんでした。");
+  const names = new Set();
+  const ids = new Set();
+  for (const item of replacements) {
+    if (!item || typeof item.id !== "string" || !item.id.trim()
+      || typeof item.word !== "string" || !item.word.trim() || item.word !== item.word.toLowerCase()
+      || typeof item.meaning !== "string" || !item.meaning.trim() || item.group !== "990"
+      || names.has(item.word) || ids.has(item.id)) throw new Error("990点の置換データが不正です。");
+    names.add(item.word);
+    ids.add(item.id);
+  }
+  const isTarget = item => normalizeGroup(item.group) === "990";
+  const removed = [...state.vocabulary, ...state.deletedWords].filter(isTarget);
+  const retained = state.vocabulary.filter(item => !isTarget(item));
+  const deleted = state.deletedWords.filter(item => !isTarget(item));
+  const conflicts = [...retained, ...deleted].filter(item => names.has(item.word.toLowerCase()));
+  if (conflicts.length) throw new Error("他レベルと重複しています：" + conflicts.map(item => item.word + "（" + item.group + "点：" + item.meaning + "）").join("、"));
+  if ([...retained, ...deleted, ...removed].some(item => ids.has(item.id))) throw new Error("新しい990点IDが既存データと重複しています。");
+  const removedIds = new Set(removed.map(item => item.id));
+  const removedNames = new Set(removed.map(item => item.word.toLowerCase()));
+  const records = Object.fromEntries(Object.entries(state.learningRecords).filter(([id]) => !removedIds.has(id) && !ids.has(id)));
+  const reviews = state.reviewWords.filter(word => !removedNames.has(word.toLowerCase()) && !names.has(word.toLowerCase()));
+  const next = { vocabulary: [...retained, ...replacements.map(item => ({ ...item }))], deletedWords: deleted, learningRecords: records, reviewWords: reviews };
+  if (next.vocabulary.filter(item => item.group === "990").length !== 100
+    || JSON.stringify(next.vocabulary.filter(item => item.group !== "990")) !== JSON.stringify(retained)
+    || JSON.stringify(next.deletedWords) !== JSON.stringify(state.deletedWords.filter(item => !isTarget(item)))
+    || Object.entries(state.learningRecords).some(([id, record]) => !removedIds.has(id) && !ids.has(id) && JSON.stringify(records[id]) !== JSON.stringify(record))) {
+    throw new Error("990点の移行結果を検証できませんでした。");
+  }
+  return next;
+}
+
+function migrate990Vocabulary(savedVocabulary) {
+  const currentVersion = Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0);
+  if (currentVersion >= VOCABULARY_MIGRATION_VERSION || currentVersion < REPLACEMENT_860_MIGRATION_VERSION) return savedVocabulary;
+  try {
+    const state = prepare990Vocabulary({
+      vocabulary: savedVocabulary,
+      deletedWords: JSON.parse(localStorage.getItem(DELETED_STORAGE_KEY) || "[]"),
+      learningRecords: JSON.parse(localStorage.getItem(LEARNING_STORAGE_KEY) || "{}"),
+      reviewWords: JSON.parse(localStorage.getItem(REVIEW_STORAGE_KEY) || "[]")
+    });
+    saveVocabularyState(state, VOCABULARY_MIGRATION_VERSION);
+    return state.vocabulary;
+  } catch (error) {
+    window.alert("990点の入れ替えを完了できませんでした。保存データを確認してください。\n" + error.message);
+    return savedVocabulary;
+  }
+}
+
+recoverVocabularyMigration();
+
+let vocabulary = migrate990Vocabulary(migrate860Vocabulary(migrate730Vocabulary(migrate500Vocabulary(migrateExpandedVocabulary(loadVocabulary())))));
 
 // HTMLの各要素をJavaScriptから使えるように取得します
 const wordElement = document.getElementById("word");
@@ -720,6 +861,7 @@ function exportBackup() {
     format: "toeic-word-quiz-backup",
     version: 1,
     exportedAt: new Date().toISOString(),
+    vocabularyMigrationVersion: Number(localStorage.getItem(VOCABULARY_MIGRATION_KEY) || 0),
     vocabulary,
     reviewWords: loadReviewWords(),
     learningRecords: loadLearningRecords(),
@@ -796,32 +938,18 @@ async function importBackup(event) {
   if (!file) return;
   try {
     if (file.size > 5 * 1024 * 1024) throw new Error("ファイルサイズが大きすぎます。");
-    const restored = validateBackup(JSON.parse(await file.text()));
+    const backupData = JSON.parse(await file.text());
+    let restored = validateBackup(backupData);
+    const backupMigrationVersion = Number(backupData.vocabularyMigrationVersion || 0);
+    if (!Number.isInteger(backupMigrationVersion) || backupMigrationVersion < 0 || backupMigrationVersion > VOCABULARY_MIGRATION_VERSION) throw new Error("移行バージョンが不正です。");
+    // 未適用の860・990点移行を保存前に検証し、重複時は現状を変更しません。
+    if (backupMigrationVersion < REPLACEMENT_860_MIGRATION_VERSION) restored = prepare860Vocabulary(restored);
+    if (backupMigrationVersion < VOCABULARY_MIGRATION_VERSION) restored = prepare990Vocabulary(restored);
     if (!window.confirm("現在の単語・復習リスト・学習記録・削除済み単語を、読み込んだバックアップで上書きしますか？")) return;
 
-    // 保存途中で失敗した場合に戻せるよう、現在値を一時的に保持します
-    const previous = {
-      words: localStorage.getItem(WORD_STORAGE_KEY),
-      reviews: localStorage.getItem(REVIEW_STORAGE_KEY),
-      records: localStorage.getItem(LEARNING_STORAGE_KEY),
-      deletedWords: localStorage.getItem(DELETED_STORAGE_KEY)
-    };
-    try {
-      localStorage.setItem(WORD_STORAGE_KEY, JSON.stringify(restored.vocabulary));
-      localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(restored.reviewWords));
-      localStorage.setItem(LEARNING_STORAGE_KEY, JSON.stringify(restored.learningRecords));
-      localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(restored.deletedWords));
-    } catch (saveError) {
-      if (previous.words === null) localStorage.removeItem(WORD_STORAGE_KEY); else localStorage.setItem(WORD_STORAGE_KEY, previous.words);
-      if (previous.reviews === null) localStorage.removeItem(REVIEW_STORAGE_KEY); else localStorage.setItem(REVIEW_STORAGE_KEY, previous.reviews);
-      if (previous.records === null) localStorage.removeItem(LEARNING_STORAGE_KEY); else localStorage.setItem(LEARNING_STORAGE_KEY, previous.records);
-      if (previous.deletedWords === null) localStorage.removeItem(DELETED_STORAGE_KEY); else localStorage.setItem(DELETED_STORAGE_KEY, previous.deletedWords);
-      throw new Error("データを保存できませんでした。");
-    }
-
-    // 古いバックアップを読み込んだ場合も、削除済み単語を除いて追加語を再適用します
-    localStorage.removeItem(VOCABULARY_MIGRATION_KEY);
-    vocabulary = migrate730Vocabulary(migrate500Vocabulary(migrateExpandedVocabulary(restored.vocabulary)));
+    // バックアップ内の他レベルと学習記録はそのまま保持します。
+    saveVocabularyState(restored, VOCABULARY_MIGRATION_VERSION);
+    vocabulary = restored.vocabulary;
     updateReviewCount();
     updateDeletedCount();
     renderWordList();
